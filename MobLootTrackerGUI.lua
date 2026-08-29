@@ -1,3 +1,141 @@
+-- MobLootTracker_GUI.lua – AceGUI GUI with loot + leather-skinning, colors + drop-rates
+
+local AceGUI = LibStub("AceGUI-3.0")
+
+local LeatherItems = {
+    [4231] = true, [4232] = true, [4233] = true,
+    [4234] = true, [4235] = true, [4304] = true,
+    [8167] = true, [8170] = true, [8171] = true,
+}
+
+local function NPCHasLeatherSkinning(npcData)
+    if not npcData or not npcData.skinning then return false end
+    for itemID in pairs(npcData.skinning) do
+        if LeatherItems[itemID] then return true end
+    end
+    return false
+end
+
+local function GetDropRate(npcData, itemID, isSkinning)
+    local total = npcData.kills or 1
+    local count = 0
+
+    if isSkinning then
+        count = npcData.skinning[itemID] and npcData.skinning[itemID].count or 0
+    else
+        count = npcData.items[itemID] and npcData.items[itemID].count or 0
+    end
+
+    return (count / total) * 100
+end
+
+local function GetItemColor(itemID)
+    local _, _, quality = GetItemInfo(itemID)
+    if not quality then return "|cffffffff" end
+
+    local colors = {
+        [0] = "|cffffffff",
+        [1] = "|cffffffff",
+        [2] = "|cff1eff00",
+        [3] = "|cff0070dd",
+        [4] = "|cffa335ee",
+        [5] = "|cffff8000",
+    }
+
+    return colors[quality] or "|cffffffff"
+end
+
+function MobLootTracker_ShowGUI(npcID)
+    local npcData = MobLootDB[npcID]
+    if not npcData then
+        print("MobLootTracker: Ingen data for NPCID", npcID)
+        return
+    end
+
+    local frame = AceGUI:Create("Frame")
+    frame:SetTitle("MobLootTracker – NPC " .. npcID)
+    frame:SetStatusText("Kills: " .. (npcData.kills or 0))
+    frame:SetLayout("Fill")
+    frame:SetWidth(450)
+    frame:SetHeight(400)
+
+    local tabs = {
+        {text = "Loot", value = "loot"},
+    }
+
+    if NPCHasLeatherSkinning(npcData) then
+        table.insert(tabs, {text = "Skinning", value = "skinning"})
+    end
+
+    local tabGroup = AceGUI:Create("TabGroup")
+    tabGroup:SetTabs(tabs)
+    tabGroup:SetLayout("Flow")
+    frame:AddChild(tabGroup)
+
+    local function DrawLootTab(container)
+        container:ReleaseChildren()
+
+        local header = AceGUI:Create("Heading")
+        header:SetText("Loot Drops")
+        container:AddChild(header)
+
+        for itemID, data in pairs(npcData.items) do
+            local name = GetItemInfo(itemID)
+            local count = data.count or 0
+            local rate = GetDropRate(npcData, itemID, false)
+            local color = GetItemColor(itemID)
+
+            local label = AceGUI:Create("Label")
+            label:SetText(color .. (name or ("Item "..itemID)) ..
+                          "|r x" .. count .. " (" .. string.format("%.1f", rate) .. "%)")
+            container:AddChild(label)
+        end
+    end
+
+    local function DrawSkinningTab(container)
+        container:ReleaseChildren()
+
+        local header = AceGUI:Create("Heading")
+        header:SetText("Skinning Drops (Leather Only)")
+        container:AddChild(header)
+
+        for itemID, data in pairs(npcData.skinning) do
+            if LeatherItems[itemID] then
+                local name = GetItemInfo(itemID)
+                local count = data.count or 0
+                local rate = GetDropRate(npcData, itemID, true)
+                local color = GetItemColor(itemID)
+
+                local label = AceGUI:Create("Label")
+                label:SetText(color .. (name or ("Item "..itemID)) ..
+                              "|r x" .. count .. " (" .. string.format("%.1f", rate) .. "%)")
+                container:AddChild(label)
+            end
+        end
+    end
+
+    tabGroup:SetCallback("OnGroupSelected", function(self, event, group)
+        if group == "loot" then
+            DrawLootTab(self)
+        elseif group == "skinning" then
+            DrawSkinningTab(self)
+        end
+    end)
+
+    tabGroup:SelectTab("loot")
+end
+
+SLASH_MLTGUI1 = "/mltgui"
+SlashCmdList["MLTGUI"] = function(msg)
+    local npcID = tonumber(msg)
+    if npcID then
+        MobLootTracker_ShowGUI(npcID)
+    else
+        print("Brug: /mltgui <npcID>")
+    end
+end
+
+print("MobLootTracker GUI loaded")
 -- MobLootTrackerGUI.lua – fuld GUI til MobLootTracker
 -- Kræver: MobLootDB fra MobLootTracker.lua
 
