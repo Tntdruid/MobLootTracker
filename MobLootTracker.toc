@@ -1,11 +1,16 @@
 ## Interface: 30300
 ## Title: MobLootTracker
-## Notes: Tracks mob loot + skinning + droprates
+## Notes: Tracks mob loot, skinning drops, droprates and NPC stats
 ## Author: Christian
 ## Version: 3.0
-## SavedVariables: MobLootDB, MobLootTracker_ShowNPCID
+## SavedVariables: MobLootTrackerDB
+## Dependencies: Ace3
+## OptionalDeps: LibDataBroker-1.1, LibDBIcon-1.0
 
-embeds.xml
+libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
+libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
+
 MobLootTracker.lua
 MobLootTrackerGUI.lua
+MobLootTrackerOptions.lua
 MobLootTrackerMinimap.lua
