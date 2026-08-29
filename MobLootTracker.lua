@@ -1,3 +1,252 @@
+-- MobLootTracker.lua – Full addon with GUI, Tooltip Loot + Skinning, Leather Filter, MI2 Skinning Method, F1xx GUID Parser
+
+MobLootDB = MobLootDB or {}
+
+---------------------------------------------------------
+-- Leather item list (WotLK / AzerothCore)
+---------------------------------------------------------
+local LeatherItems = {
+    [4231] = true, [4232] = true, [4233] = true,
+    [4234] = true, [4235] = true, [4304] = true,
+    [8167] = true, [8170] = true, [8171] = true,
+}
+
+local function NPCHasLeatherSkinning(npcData)
+    if not npcData or not npcData.skinning then return false end
+    for itemID in pairs(npcData.skinning) do
+        if LeatherItems[itemID] then return true end
+    end
+    return false
+end
+
+---------------------------------------------------------
+-- GUID parser (AzerothCore F1xx creature GUIDs)
+---------------------------------------------------------
+function ResolveNPCIDFromGUID(guid)
+    if not guid then return nil end
+    if type(guid) == "number" then return guid end
+    if type(guid) == "string" and guid:match("^%d+$") then return tonumber(guid) end
+    local entryHex = guid:match("^0xF1%x%x(%x%x%x%x%x%x)")
+    return entryHex and tonumber(entryHex, 16) or nil
+end
+
+---------------------------------------------------------
+-- SavedVariables
+---------------------------------------------------------
+local saveFrame = CreateFrame("Frame")
+saveFrame:RegisterEvent("PLAYER_LOGOUT")
+saveFrame:SetScript("OnEvent", function() MobLootDB = MobLootDB or {} end)
+
+---------------------------------------------------------
+-- MI2 Skinning Method: corpse reopen detection
+---------------------------------------------------------
+local lastCorpseID = nil
+
+local function GetCorpseID()
+    return UnitGUID("target") or UnitGUID("mouseover")
+end
+
+local function IsCorpseReopen(corpseID)
+    return corpseID ~= nil and corpseID == lastCorpseID
+end
+
+local function StoreCorpseID(corpseID)
+    lastCorpseID = corpseID
+end
+
+---------------------------------------------------------
+-- Kill tracking (WotLK combatlog)
+---------------------------------------------------------
+local recentKills = {}
+local lastGUID = nil
+
+local mainFrame = CreateFrame("Frame")
+mainFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+mainFrame:RegisterEvent("LOOT_OPENED")
+mainFrame:RegisterEvent("LOOT_SLOT_CLEARED")
+
+mainFrame:SetScript("OnEvent", function(self, event, ...)
+
+    if event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        local _, subEvent, _, _, _, _, dstGUID = ...
+        if subEvent == "UNIT_DIED" and dstGUID then
+            local npcID = ResolveNPCIDFromGUID(dstGUID)
+            if npcID then recentKills[npcID] = true lastGUID = dstGUID end
+        end
+    end
+
+    if event == "LOOT_OPENED" then
+        local npcID = nil
+
+        for id in pairs(recentKills) do npcID = id break end
+
+        if not npcID then
+            local guid = UnitGUID("target")
+            if guid then npcID = ResolveNPCIDFromGUID(guid) lastGUID = guid end
+        end
+
+        if not npcID then
+            local guid = UnitGUID("mouseover")
+            if guid then npcID = ResolveNPCIDFromGUID(guid) lastGUID = guid end
+        end
+
+        if not npcID and lastGUID then npcID = ResolveNPCIDFromGUID(lastGUID) end
+        if not npcID then print("MobLootTracker: Ingen NPCID ved loot.") return end
+
+        MobLootDB[npcID] = MobLootDB[npcID] or { kills = 0, items = {}, skinning = {} }
+        MobLootDB[npcID].kills = MobLootDB[npcID].kills + 1
+        recentKills[npcID] = nil
+
+        local corpseID = GetCorpseID()
+        local isSkinning = IsCorpseReopen(corpseID)
+
+        for slot = 1, GetNumLootItems() do
+            local itemLink = GetLootSlotLink(slot)
+            if itemLink then
+                local itemID = tonumber(itemLink:match("item:(%d+)"))
+                if itemID then
+                    if isSkinning then
+                        MobLootDB[npcID].skinning[itemID] = MobLootDB[npcID].skinning[itemID] or { count = 0 }
+                        MobLootDB[npcID].skinning[itemID].count = MobLootDB[npcID].skinning[itemID].count + 1
+                    else
+                        MobLootDB[npcID].items[itemID] = MobLootDB[npcID].items[itemID] or { count = 0 }
+                        MobLootDB[npcID].items[itemID].count = MobLootDB[npcID].items[itemID].count + 1
+                    end
+                end
+            end
+        end
+
+        StoreCorpseID(corpseID)
+    end
+
+    if event == "LOOT_SLOT_CLEARED" then
+        local npcID = ResolveNPCIDFromGUID(UnitGUID("target") or UnitGUID("mouseover"))
+        if npcID then StoreCorpseID(GetCorpseID()) end
+    end
+end)
+
+---------------------------------------------------------
+-- Tooltip: show normal loot + leather skinning
+---------------------------------------------------------
+GameTooltip:HookScript("OnTooltipSetUnit", function(self)
+    local _, unit = self:GetUnit()
+    if not unit then return end
+
+    local guid = UnitGUID(unit)
+    local npcID = ResolveNPCIDFromGUID(guid)
+    if not npcID then return end
+
+    local npcData = MobLootDB[npcID]
+    if not npcData then return end
+
+    ---------------------------------------------------------
+    -- Normal loot
+    ---------------------------------------------------------
+    if npcData.items and next(npcData.items) then
+        self:AddLine("Known Drops:", 0.8, 0.8, 0.2)
+        for itemID, data in pairs(npcData.items) do
+            local name = GetItemInfo(itemID)
+            local count = data.count or 0
+            self:AddLine("  " .. (name or ("Item "..itemID)) .. " x" .. count, 1, 1, 1)
+        end
+    end
+
+    ---------------------------------------------------------
+    -- Skinning loot (only leather)
+    ---------------------------------------------------------
+    if NPCHasLeatherSkinning(npcData) then
+        self:AddLine("Skinning Drops:", 0.2, 0.8, 1)
+        for itemID, data in pairs(npcData.skinning) do
+            if LeatherItems[itemID] then
+                local name = GetItemInfo(itemID)
+                local count = data.count or 0
+                self:AddLine("  " .. (name or ("Item "..itemID)) .. " x" .. count, 1, 1, 1)
+            end
+        end
+    end
+end)
+
+---------------------------------------------------------
+-- GUI (AceGUI)
+---------------------------------------------------------
+local AceGUI = LibStub("AceGUI-3.0")
+
+function MobLootTracker_ShowGUI(npcID)
+    local npcData = MobLootDB[npcID]
+    if not npcData then print("MobLootTracker: Ingen data for NPCID", npcID) return end
+
+    local frame = AceGUI:Create("Frame")
+    frame:SetTitle("MobLootTracker – NPC " .. npcID)
+    frame:SetStatusText("Kills: " .. (npcData.kills or 0))
+    frame:SetLayout("Fill")
+    frame:SetWidth(450)
+    frame:SetHeight(400)
+
+    local tabs = {
+        {text = "Loot", value = "loot"},
+    }
+
+    if NPCHasLeatherSkinning(npcData) then
+        table.insert(tabs, {text = "Skinning", value = "skinning"})
+    end
+
+    local tabGroup = AceGUI:Create("TabGroup")
+    tabGroup:SetTabs(tabs)
+    tabGroup:SetLayout("Flow")
+    frame:AddChild(tabGroup)
+
+    local function DrawLootTab(container)
+        container:ReleaseChildren()
+        local header = AceGUI:Create("Heading")
+        header:SetText("Loot Drops")
+        container:AddChild(header)
+
+        for itemID, data in pairs(npcData.items) do
+            local name = GetItemInfo(itemID)
+            local count = data.count or 0
+            local label = AceGUI:Create("Label")
+            label:SetText((name or ("Item "..itemID)) .. " x" .. count)
+            container:AddChild(label)
+        end
+    end
+
+    local function DrawSkinningTab(container)
+        container:ReleaseChildren()
+        local header = AceGUI:Create("Heading")
+        header:SetText("Skinning Drops (Leather Only)")
+        container:AddChild(header)
+
+        for itemID, data in pairs(npcData.skinning) do
+            if LeatherItems[itemID] then
+                local name = GetItemInfo(itemID)
+                local count = data.count or 0
+                local label = AceGUI:Create("Label")
+                label:SetText((name or ("Item "..itemID)) .. " x" .. count)
+                container:AddChild(label)
+            end
+        end
+    end
+
+    tabGroup:SetCallback("OnGroupSelected", function(self, event, group)
+        if group == "loot" then DrawLootTab(self)
+        elseif group == "skinning" then DrawSkinningTab(self)
+        end
+    end)
+
+    tabGroup:SelectTab("loot")
+end
+
+---------------------------------------------------------
+-- Slash commands
+---------------------------------------------------------
+SLASH_MLTGUI1 = "/mltgui"
+SlashCmdList["MLTGUI"] = function(msg)
+    local npcID = tonumber(msg)
+    if npcID then MobLootTracker_ShowGUI(npcID)
+    else print("Brug: /mltgui <npcID>") end
+end
+
+print("MobLootTracker (Full GUI + Tooltip Loot + Leather Skinning + MI2 Method + F1xx Parser) loaded")
 -- MobLootTracker.lua – AzerothCore WotLK + MI2 Skinning Method + Kill-Fix + Auto-Loot + F1xx GUID Parser
 MobLootDB = MobLootDB or {}
 
