@@ -1,18 +1,15 @@
--- MobLootTracker.lua – AzerothCore WotLK + Full F1xx GUID Parser + Auto-Loot + Skinning-Spell + Kill-Fix + SavedVariables
+-- MobLootTracker.lua – AzerothCore WotLK + MI2 Skinning Method + Kill-Fix + Auto-Loot + F1xx GUID Parser
 MobLootDB = MobLootDB or {}
 
 ---------------------------------------------------------
--- GLOBAL GUID parser til alle AzerothCore F1xx-creature GUIDs
+-- GUID parser (AzerothCore F1xx creature GUIDs)
 ---------------------------------------------------------
 function ResolveNPCIDFromGUID(guid)
     if not guid then return nil end
 
-    -- numeric fallback
     if type(guid) == "number" then return guid end
     if type(guid) == "string" and guid:match("^%d+$") then return tonumber(guid) end
 
-    -- Match ANY creature-type GUID beginning with F1xx
-    -- Format: 0xF1??xxxxxxYYYYZZ
     local entryHex = guid:match("^0xF1%x%x(%x%x%x%x%x%x)")
     if entryHex then
         return tonumber(entryHex, 16)
@@ -22,7 +19,7 @@ function ResolveNPCIDFromGUID(guid)
 end
 
 ---------------------------------------------------------
--- SavedVariables / logout-fix
+-- SavedVariables
 ---------------------------------------------------------
 local saveFrame = CreateFrame("Frame")
 saveFrame:RegisterEvent("PLAYER_LOGOUT")
@@ -31,16 +28,38 @@ saveFrame:SetScript("OnEvent", function()
 end)
 
 ---------------------------------------------------------
--- Kill + loot tracking via COMBAT_LOG_EVENT_UNFILTERED + LOOT_OPENED
+-- MI2 Skinning Method: corpse reopen detection
+---------------------------------------------------------
+local lastCorpseID = nil
+
+local function GetCorpseID()
+    return UnitGUID("target") or UnitGUID("mouseover")
+end
+
+local function IsCorpseReopen(corpseID)
+    return corpseID ~= nil and corpseID == lastCorpseID
+end
+
+local function StoreCorpseID(corpseID)
+    lastCorpseID = corpseID
+end
+
+---------------------------------------------------------
+-- Kill tracking (WotLK combatlog)
 ---------------------------------------------------------
 local recentKills = {}
 local lastGUID = nil
 
-local frame = CreateFrame("Frame")
-frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-frame:RegisterEvent("LOOT_OPENED")
+local mainFrame = CreateFrame("Frame")
+mainFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+mainFrame:RegisterEvent("LOOT_OPENED")
+mainFrame:RegisterEvent("LOOT_SLOT_CLEARED")
 
-frame:SetScript("OnEvent", function(self, event, ...)
+mainFrame:SetScript("OnEvent", function(self, event, ...)
+
+    ---------------------------------------------------------
+    -- UNIT_DIED → kill detection
+    ---------------------------------------------------------
     if event == "COMBAT_LOG_EVENT_UNFILTERED" then
         local timestamp, subEvent, hideCaster,
               srcGUID, srcName, srcFlags,
@@ -53,16 +72,22 @@ frame:SetScript("OnEvent", function(self, event, ...)
                 lastGUID = dstGUID
             end
         end
+    end
 
-    elseif event == "LOOT_OPENED" then
-        -- 1) Combatlog kill NPCID
+    ---------------------------------------------------------
+    -- LOOT_OPENED → normal loot + skinning loot
+    ---------------------------------------------------------
+    if event == "LOOT_OPENED" then
+
         local npcID = nil
+
+        -- 1) Combatlog kill
         for id in pairs(recentKills) do
             npcID = id
             break
         end
 
-        -- 2) Target GUID fallback
+        -- 2) Target fallback
         if not npcID then
             local guid = UnitGUID("target")
             if guid then
@@ -71,7 +96,7 @@ frame:SetScript("OnEvent", function(self, event, ...)
             end
         end
 
-        -- 3) Mouseover GUID fallback
+        -- 3) Mouseover fallback
         if not npcID then
             local guid = UnitGUID("mouseover")
             if guid then
@@ -80,99 +105,74 @@ frame:SetScript("OnEvent", function(self, event, ...)
             end
         end
 
-        -- 4) Last known GUID fallback
+        -- 4) Last GUID fallback
         if not npcID and lastGUID then
             npcID = ResolveNPCIDFromGUID(lastGUID)
         end
 
-        -- 5) Hvis stadig ingen NPCID → stop
         if not npcID then
-            print("MobLootTracker: Ingen NPCID ved loot (auto-loot).")
+            print("MobLootTracker: Ingen NPCID ved loot.")
             return
         end
 
-        -- 6) Opret DB entry
         MobLootDB[npcID] = MobLootDB[npcID] or { kills = 0, items = {}, skinning = {} }
 
-        ---------------------------------------------------------
-        -- ⭐ KILL-FIX: Count kill on loot ALWAYS
-        ---------------------------------------------------------
+        -- Kill fix
         MobLootDB[npcID].kills = MobLootDB[npcID].kills + 1
-
-        -- Clear combatlog kill if present
-        if recentKills[npcID] then
-            recentKills[npcID] = nil
-        end
-
-        MobLootDB = MobLootDB
+        recentKills[npcID] = nil
 
         ---------------------------------------------------------
-        -- 8) Registrer loot
+        -- MI2 Skinning Method: corpse reopen = skinning
+        ---------------------------------------------------------
+        local corpseID = GetCorpseID()
+        local isSkinning = IsCorpseReopen(corpseID)
+
+        ---------------------------------------------------------
+        -- Register loot
         ---------------------------------------------------------
         for slot = 1, GetNumLootItems() do
             local itemLink = GetLootSlotLink(slot)
             if itemLink then
-                local itemID = tonumber(string.match(itemLink, "item:(%d+)"))
+                local itemID = tonumber(itemLink:match("item:(%d+)"))
                 if itemID then
-                    MobLootDB[npcID].items[itemID] = MobLootDB[npcID].items[itemID] or { count = 0 }
-                    MobLootDB[npcID].items[itemID].count = MobLootDB[npcID].items[itemID].count + 1
-                    MobLootDB = MobLootDB
 
-                    print("MobLootTracker: Loot registreret for NPCID", npcID, "item", itemID)
+                    if isSkinning then
+                        ---------------------------------------------------------
+                        -- ⭐ SKINNING LOOT
+                        ---------------------------------------------------------
+                        MobLootDB[npcID].skinning[itemID] = MobLootDB[npcID].skinning[itemID] or { count = 0 }
+                        MobLootDB[npcID].skinning[itemID].count = MobLootDB[npcID].skinning[itemID].count + 1
+
+                        print("MobLootTracker: Skinning registreret for NPCID", npcID, "item", itemID)
+
+                    else
+                        ---------------------------------------------------------
+                        -- NORMAL LOOT
+                        ---------------------------------------------------------
+                        MobLootDB[npcID].items[itemID] = MobLootDB[npcID].items[itemID] or { count = 0 }
+                        MobLootDB[npcID].items[itemID].count = MobLootDB[npcID].items[itemID].count + 1
+
+                        print("MobLootTracker: Loot registreret for NPCID", npcID, "item", itemID)
+                    end
                 end
             end
         end
+
+        ---------------------------------------------------------
+        -- First loot = normal loot → store corpse ID
+        ---------------------------------------------------------
+        StoreCorpseID(corpseID)
     end
-end)
 
----------------------------------------------------------
--- Skinning tracking (kun hvis skinning-spell blev brugt)
----------------------------------------------------------
-
--- ⭐ AzerothCore bruger FLERE skinning-spellIDs
-local SKINNING_SPELLS = {
-    [8613] = true, -- standard skinning
-    [8617] = true,
-    [8618] = true,
-    [8619] = true,
-    [8620] = true,
-}
-
-local lastSkinningTarget = nil
-
--- Skinning spell detection
-local skinSpellFrame = CreateFrame("Frame")
-skinSpellFrame:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
-skinSpellFrame:SetScript("OnEvent", function(self, event, unit, _, spellID)
-    if unit == "player" and SKINNING_SPELLS[spellID] then
-        lastSkinningTarget = UnitGUID("target")
+    ---------------------------------------------------------
+    -- LOOT_SLOT_CLEARED → update corpse ID
+    ---------------------------------------------------------
+    if event == "LOOT_SLOT_CLEARED" then
+        local npcID = ResolveNPCIDFromGUID(UnitGUID("target") or UnitGUID("mouseover"))
+        if npcID then
+            StoreCorpseID(GetCorpseID())
+        end
     end
-end)
-
-local skinFrame = CreateFrame("Frame")
-skinFrame:RegisterEvent("CHAT_MSG_LOOT")
-skinFrame:SetScript("OnEvent", function(self, event, msg)
-    local itemLink = msg:match("You receive loot: (.+)")
-    if not itemLink then return end
-
-    -- Only treat loot as skinning if we have a skinning target
-    if not lastSkinningTarget then return end
-
-    local npcID = ResolveNPCIDFromGUID(lastSkinningTarget)
-    lastSkinningTarget = nil -- reset
-
-    if not npcID then return end
-
-    local itemID = tonumber(string.match(itemLink, "item:(%d+)"))
-    if not itemID then return end
-
-    MobLootDB[npcID] = MobLootDB[npcID] or { kills = 0, items = {}, skinning = {} }
-
-    MobLootDB[npcID].skinning[itemID] = MobLootDB[npcID].skinning[itemID] or { count = 0 }
-    MobLootDB[npcID].skinning[itemID].count = MobLootDB[npcID].skinning[itemID].count + 1
-    MobLootDB = MobLootDB
-
-    print("MobLootTracker: Skinning registreret for NPCID", npcID, "item", itemID)
 end)
 
 ---------------------------------------------------------
@@ -191,4 +191,4 @@ SlashCmdList["MLTDEBUG"] = function()
     end
 end
 
-print("MobLootTracker (AzerothCore Full F1xx GUID + Auto-Loot + Skinning-Spell + Kill-Fix) loaded")
+print("MobLootTracker (MI2 Skinning Method + Kill-Fix + F1xx GUID Parser) loaded")
