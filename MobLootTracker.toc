@@ -1,0 +1,10 @@
+## Interface: 30300
+## Title: MobLootTracker
+## Notes: Tracks mob loot + skinning + droprates
+## Author: Christian
+## Version: 3.0
+## SavedVariables: MobLootDB
+
+embeds.xml
+MobLootTracker.lua
+MobLootTrackerGUI.lua
