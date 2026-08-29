@@ -3,8 +3,9 @@
 ## Notes: Tracks mob loot + skinning + droprates
 ## Author: Christian
 ## Version: 3.0
-## SavedVariables: MobLootDB
+## SavedVariables: MobLootDB, MobLootTracker_ShowNPCID
 
 embeds.xml
 MobLootTracker.lua
 MobLootTrackerGUI.lua
+MobLootTrackerMinimap.lua
