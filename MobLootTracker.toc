@@ -7,10 +7,16 @@
 ## Dependencies: Ace3
 ## OptionalDeps: LibDataBroker-1.1, LibDBIcon-1.0
 
+# --- LIBRARIES ---
 libs\LibDataBroker-1.1\LibDataBroker-1.1.lua
 libs\LibDBIcon-1.0\LibDBIcon-1.0.lua
 
+# --- CORE ---
 MobLootTracker.lua
+
+# --- MODULES ---
 MobLootTrackerGUI.lua
 MobLootTrackerOptions.lua
 MobLootTrackerMinimap.lua
+MobLootTrackerItemTooltip.lua
+
