@@ -170,6 +170,40 @@ function MobLootTracker:LOOT_OPENED()
 end
 
 ---------------------------------------------------------
+-- TOOLTIP DUPLICATION FIX (FULL FALLBACK)
+---------------------------------------------------------
+local function TooltipHasMLT(tooltip, npcName, npcID)
+    for i = 1, tooltip:NumLines() do
+        local line = _G["GameTooltipTextLeft"..i]
+        if line then
+            local txt = line:GetText()
+            if txt then
+                -- Header match
+                if txt == npcName then
+                    return true
+                end
+
+                -- NPC ID match
+                if txt:find("NPC "..npcID) then
+                    return true
+                end
+
+                -- Zone match
+                if txt:find("Zone: ") then
+                    return true
+                end
+
+                -- Loot sections
+                if txt:find("Drops:") or txt:find("Known Drops") or txt:find("Skinning:") then
+                    return true
+                end
+            end
+        end
+    end
+    return false
+end
+
+---------------------------------------------------------
 -- TOOLTIP (Loot + Skinning)
 ---------------------------------------------------------
 function MobLootTracker:OnTooltipSetUnit(tooltip)
@@ -181,6 +215,13 @@ function MobLootTracker:OnTooltipSetUnit(tooltip)
 
     local npcID = ResolveNPCIDFromGUID(guid)
     if not npcID then return end
+
+    local npcName = UnitName(unit) or ("NPC "..npcID)
+
+    -- STOP DUPLIKERING (header + fallback)
+    if TooltipHasMLT(tooltip, npcName, npcID) then
+        return
+    end
 
     local db = SafeDB()
     local npcData = db[npcID]
@@ -194,7 +235,7 @@ function MobLootTracker:OnTooltipSetUnit(tooltip)
     -----------------------------------------------------
     -- HEADER
     -----------------------------------------------------
-    tooltip:AddLine(npcData.name or ("NPC "..npcID), 1, 0.9, 0.4)
+    tooltip:AddLine(npcName, 1, 0.9, 0.4)
 
     -----------------------------------------------------
     -- ZONES
@@ -228,7 +269,7 @@ function MobLootTracker:OnTooltipSetUnit(tooltip)
     end
 
     -----------------------------------------------------
-    -- SKINNING LOOT (THIS WAS MISSING)
+    -- SKINNING LOOT
     -----------------------------------------------------
     if next(npcData.skinning) then
         tooltip:AddLine("Skinning:", 0.8, 0.6, 0.2)
@@ -248,3 +289,14 @@ function MobLootTracker:OnTooltipSetUnit(tooltip)
     end
 end
 
+---------------------------------------------------------
+-- SIMPLE GUI (placeholder) – /mlt
+---------------------------------------------------------
+function MobLootTracker:ShowGUI()
+    local db = SafeDB()
+    local count = 0
+    for _ in pairs(db) do count = count + 1 end
+
+    self:Print("MobLootTracker: registrerede mobs: "..count)
+    self:Print("Brug tooltip på mobs for at se loot- og skinning-data.")
+end
