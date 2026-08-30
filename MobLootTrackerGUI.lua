@@ -1,178 +1,176 @@
--- MobLootTrackerGUI.lua – AceGUI tabs for Loot / Skinning / Stats (AzerothCore/WotLK)
+-- MobLootTrackerGUI.lua – SAFE VERSION (no top-level MobLootTracker usage)
 
-local MobLootTracker = LibStub("AceAddon-3.0"):GetAddon("MobLootTracker")
 local AceGUI = LibStub("AceGUI-3.0")
 
 ---------------------------------------------------------
--- Main GUI frame
+-- MAIN WINDOW
 ---------------------------------------------------------
-local mainFrame = nil
-
----------------------------------------------------------
--- Public API: Show GUI for NPCID
----------------------------------------------------------
-function MobLootTracker:ShowGUI(npcID)
-    local db = self:GetDB()
-    local npcData = db[npcID]
-
-    if not npcData then
-        self:Print("Ingen data for NPCID:", npcID)
+function MobLootTracker:ShowGUI()
+    if self.GUI then
+        self.GUI:Show()
+        self:RefreshGUI()
         return
     end
 
-    -- Close old frame
-    if mainFrame then
-        mainFrame:Release()
-        mainFrame = nil
-    end
+    local frame = AceGUI:Create("Frame")
+    frame:SetTitle("MobLootTracker")
+    frame:SetStatusText("Loot, NPCs, Zones, Settings")
+    frame:SetLayout("Flow")
+    frame:SetWidth(600)
+    frame:SetHeight(500)
+    frame:EnableResize(true)
 
-    -----------------------------------------------------
-    -- Frame
-    -----------------------------------------------------
-    mainFrame = AceGUI:Create("Frame")
-    mainFrame:SetTitle("MobLootTracker – NPC " .. npcID)
-    mainFrame:SetStatusText("Kills: " .. (npcData.kills or 0))
-    mainFrame:SetLayout("Fill")
-    mainFrame:SetWidth(550)
-    mainFrame:SetHeight(550)
+    self.GUI = frame
 
-    -----------------------------------------------------
-    -- TabGroup
-    -----------------------------------------------------
-    local tabs = {
-        { text = "Loot",    value = "loot" },
-        { text = "Skinning", value = "skinning" },
-        { text = "Stats",   value = "stats" },
-    }
+    local tabs = AceGUI:Create("TabGroup")
+    tabs:SetLayout("Flow")
+    tabs:SetTabs({
+        {text = "Loot", value = "loot"},
+        {text = "Skinning", value = "skin"},
+        {text = "NPCs", value = "npc"},
+        {text = "Settings", value = "settings"},
+    })
+    tabs:SetFullWidth(true)
+    tabs:SetFullHeight(true)
+    tabs:SelectTab("loot")
 
-    local tabGroup = AceGUI:Create("TabGroup")
-    tabGroup:SetTabs(tabs)
-    tabGroup:SetLayout("Flow")
-    mainFrame:AddChild(tabGroup)
+    frame:AddChild(tabs)
 
-    -----------------------------------------------------
-    -- Loot Tab
-    -----------------------------------------------------
-    local function DrawLootTab(container)
+    tabs:SetCallback("OnGroupSelected", function(container, event, group)
         container:ReleaseChildren()
 
-        local header = AceGUI:Create("Heading")
-        header:SetText("Loot Drops")
-        container:AddChild(header)
-
-        if not next(npcData.items) then
-            local empty = AceGUI:Create("Label")
-            empty:SetText("Ingen loot registreret.")
-            container:AddChild(empty)
-            return
-        end
-
-        for itemID, data in pairs(npcData.items) do
-            local name = GetItemInfo(itemID) or ("Item " .. itemID)
-            local count = data.count or 0
-            local rate = (count / (npcData.kills or 1)) * 100
-
-            local color = "|cffffffff"
-            if MobLootTracker:GetSetting("showItemColors") then
-                local _, _, quality = GetItemInfo(itemID)
-                if quality == 2 then color = "|cff1eff00"
-                elseif quality == 3 then color = "|cff0070dd"
-                elseif quality == 4 then color = "|cffa335ee"
-                elseif quality == 5 then color = "|cffff8000"
-                end
-            end
-
-            local label = AceGUI:Create("Label")
-            label:SetText(string.format(
-                "%s%s|r x%d (%.1f%%)",
-                color, name, count, rate
-            ))
-            container:AddChild(label)
-        end
-    end
-
-    -----------------------------------------------------
-    -- Skinning Tab
-    -----------------------------------------------------
-    local function DrawSkinningTab(container)
-        container:ReleaseChildren()
-
-        local header = AceGUI:Create("Heading")
-        header:SetText("Skinning Drops")
-        container:AddChild(header)
-
-        if not next(npcData.skinning) then
-            local empty = AceGUI:Create("Label")
-            empty:SetText("Ingen skinning registreret.")
-            container:AddChild(empty)
-            return
-        end
-
-        local totalSkin = 0
-        for _, d in pairs(npcData.skinning) do totalSkin = totalSkin + (d.count or 0) end
-
-        for itemID, data in pairs(npcData.skinning) do
-            local name = GetItemInfo(itemID) or ("Item " .. itemID)
-            local count = data.count or 0
-            local rate = totalSkin > 0 and (count / totalSkin * 100) or 0
-
-            local color = "|cffffffff"
-            if MobLootTracker:GetSetting("showItemColors") then
-                local _, _, quality = GetItemInfo(itemID)
-                if quality == 2 then color = "|cff1eff00"
-                elseif quality == 3 then color = "|cff0070dd"
-                elseif quality == 4 then color = "|cffa335ee"
-                elseif quality == 5 then color = "|cffff8000"
-                end
-            end
-
-            local label = AceGUI:Create("Label")
-            label:SetText(string.format(
-                "%s%s|r x%d (%.1f%%)",
-                color, name, count, rate
-            ))
-            container:AddChild(label)
-        end
-    end
-
-    -----------------------------------------------------
-    -- Stats Tab
-    -----------------------------------------------------
-    local function DrawStatsTab(container)
-        container:ReleaseChildren()
-
-        local header = AceGUI:Create("Heading")
-        header:SetText("Statistik")
-        container:AddChild(header)
-
-        local totalLoot = 0
-        local totalSkin = 0
-
-        for _, d in pairs(npcData.items) do totalLoot = totalLoot + (d.count or 0) end
-        for _, d in pairs(npcData.skinning) do totalSkin = totalSkin + (d.count or 0) end
-
-        local stats = AceGUI:Create("Label")
-        stats:SetText(string.format(
-            "Kills: %d\nLoot items: %d\nSkinning items: %d",
-            npcData.kills or 0,
-            totalLoot,
-            totalSkin
-        ))
-        container:AddChild(stats)
-    end
-
-    -----------------------------------------------------
-    -- Tab switch handler
-    -----------------------------------------------------
-    tabGroup:SetCallback("OnGroupSelected", function(self, event, group)
         if group == "loot" then
-            DrawLootTab(self)
-        elseif group == "skinning" then
-            DrawSkinningTab(self)
-        elseif group == "stats" then
-            DrawStatsTab(self)
+            MobLootTracker:BuildLootTab(container)
+        elseif group == "skin" then
+            MobLootTracker:BuildSkinTab(container)
+        elseif group == "npc" then
+            MobLootTracker:BuildNPCTab(container)
+        elseif group == "settings" then
+            MobLootTracker:BuildSettingsTab(container)
         end
     end)
 
-    tabGroup:SelectTab("loot")
+    self:RefreshGUI()
+end
+
+---------------------------------------------------------
+-- REFRESH GUI
+---------------------------------------------------------
+function MobLootTracker:RefreshGUI()
+    if not self.GUI then return end
+    self.GUI.children[1]:SelectTab(self.GUI.children[1].selected)
+end
+
+---------------------------------------------------------
+-- LOOT TAB
+---------------------------------------------------------
+function MobLootTracker:BuildLootTab(container)
+    local db = self:GetDB()
+
+    local scroll = AceGUI:Create("ScrollFrame")
+    scroll:SetLayout("Flow")
+    scroll:SetFullWidth(true)
+    scroll:SetFullHeight(true)
+    container:AddChild(scroll)
+
+    for npcID, npcData in pairs(db) do
+        if npcData.items then
+            for itemID, data in pairs(npcData.items) do
+                local name = GetItemInfo(itemID) or ("Item "..itemID)
+                local rate = npcData.kills > 0 and (data.count / npcData.kills * 100) or 0
+
+                local label = AceGUI:Create("Label")
+                label:SetText(string.format(
+                    "|cffffd200%s|r dropped by %s (%d kills) – %.1f%%",
+                    name, npcData.name or ("NPC "..npcID), npcData.kills, rate
+                ))
+                label:SetFullWidth(true)
+                scroll:AddChild(label)
+            end
+        end
+    end
+end
+
+---------------------------------------------------------
+-- SKINNING TAB
+---------------------------------------------------------
+function MobLootTracker:BuildSkinTab(container)
+    local db = self:GetDB()
+
+    local scroll = AceGUI:Create("ScrollFrame")
+    scroll:SetLayout("Flow")
+    scroll:SetFullWidth(true)
+    scroll:SetFullHeight(true)
+    container:AddChild(scroll)
+
+    for npcID, npcData in pairs(db) do
+        if npcData.skinning then
+            for itemID, data in pairs(npcData.skinning) do
+                local name = GetItemInfo(itemID) or ("Item "..itemID)
+
+                local label = AceGUI:Create("Label")
+                label:SetText(string.format(
+                    "|cff88ff88%s|r skinned from %s (%d skins)",
+                    name, npcData.name or ("NPC "..npcID), data.count
+                ))
+                label:SetFullWidth(true)
+                scroll:AddChild(label)
+            end
+        end
+    end
+end
+
+---------------------------------------------------------
+-- NPC TAB
+---------------------------------------------------------
+function MobLootTracker:BuildNPCTab(container)
+    local db = self:GetDB()
+
+    local scroll = AceGUI:Create("ScrollFrame")
+    scroll:SetLayout("Flow")
+    scroll:SetFullWidth(true)
+    scroll:SetFullHeight(true)
+    container:AddChild(scroll)
+
+    for npcID, npcData in pairs(db) do
+        local zones = ""
+        if npcData.zones then
+            for zone in pairs(npcData.zones) do
+                zones = zones .. zone .. ", "
+            end
+            zones = zones:gsub(", $", "")
+        end
+
+        local label = AceGUI:Create("Label")
+        label:SetText(string.format(
+            "|cffffd200%s|r (ID %d)\nKills: %d\nZones: %s",
+            npcData.name or ("NPC "..npcID),
+            npcID,
+            npcData.kills or 0,
+            zones ~= "" and zones or "Unknown"
+        ))
+        label:SetFullWidth(true)
+        scroll:AddChild(label)
+    end
+end
+
+---------------------------------------------------------
+-- SETTINGS TAB
+---------------------------------------------------------
+function MobLootTracker:BuildSettingsTab(container)
+    local debugToggle = AceGUI:Create("CheckBox")
+    debugToggle:SetLabel("Enable Debug Mode")
+    debugToggle:SetValue(self:GetSetting("debugMode"))
+    debugToggle:SetCallback("OnValueChanged", function(_, _, val)
+        self:SetSetting("debugMode", val)
+    end)
+    container:AddChild(debugToggle)
+
+    local npcIDToggle = AceGUI:Create("CheckBox")
+    npcIDToggle:SetLabel("Show NPC ID in Tooltip")
+    npcIDToggle:SetValue(self:GetSetting("showNPCID"))
+    npcIDToggle:SetCallback("OnValueChanged", function(_, _, val)
+        self:SetSetting("showNPCID", val)
+    end)
+    container:AddChild(npcIDToggle)
 end

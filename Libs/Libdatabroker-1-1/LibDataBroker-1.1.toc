@@ -1,0 +1,7 @@
+## Interface: 30300
+## Title: LibDataBroker-1.1
+## Notes: DataBroker library
+## Author: LDB Team
+## Version: 1.1
+
+LibDataBroker-1.1.lua

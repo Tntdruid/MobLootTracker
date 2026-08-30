@@ -1,11 +1,12 @@
 -- MobLootTracker.lua – FINAL FULL VERSION (AzerothCore F1 GUID + Zones + Colors)
 
-local MobLootTracker = LibStub("AceAddon-3.0"):NewAddon(
+MobLootTracker = LibStub("AceAddon-3.0"):NewAddon(
     "MobLootTracker",
     "AceConsole-3.0",
     "AceEvent-3.0",
     "AceHook-3.0"
 )
+
 
 local AceDB = LibStub("AceDB-3.0")
 
