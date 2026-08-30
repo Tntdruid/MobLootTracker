@@ -1,4 +1,4 @@
--- MobLootTracker.lua – Fully Safe Core (AzerothCore F1 GUID + Zones + Colors)
+-- MobLootTracker.lua – Ny core med leather-integration (Vanilla + BC + WotLK)
 
 MobLootTracker = LibStub("AceAddon-3.0"):NewAddon(
     "MobLootTracker",
@@ -10,30 +10,40 @@ MobLootTracker = LibStub("AceAddon-3.0"):NewAddon(
 local AceDB = LibStub("AceDB-3.0")
 
 ---------------------------------------------------------
+-- LEATHER LIST (Vanilla + BC + WotLK)
+---------------------------------------------------------
+local LEATHER_ITEMS = {
+    -- Vanilla
+    [2318]=true,[2319]=true,[4231]=true,[4232]=true,[4233]=true,[4234]=true,[4235]=true,
+    [4461]=true,[6470]=true,[6471]=true,[7286]=true,[7287]=true,[7392]=true,[8167]=true,
+    [8169]=true,[8170]=true,[8171]=true,
+
+    -- BC
+    [21887]=true,[25649]=true,[25700]=true,[25707]=true,[25708]=true,[25703]=true,[25702]=true,
+    [23248]=true,[25421]=true,[25420]=true,
+
+    -- WotLK
+    [33568]=true,[33567]=true,[38557]=true,[38558]=true,[38561]=true,[44128]=true,
+}
+
+---------------------------------------------------------
 -- SAFE SAVEDVARIABLES BOOTSTRAP
 ---------------------------------------------------------
 MobLootTrackerDB = MobLootTrackerDB or {}
 
-MobLootTrackerDB.global  = MobLootTrackerDB.global or {}
+MobLootTrackerDB.global     = MobLootTrackerDB.global     or {}
 MobLootTrackerDB.global.MobLootDB = MobLootTrackerDB.global.MobLootDB or {}
 
-MobLootTrackerDB.profile = MobLootTrackerDB.profile or {}
-
--- Minimap is NOT part of AceDB defaults
-MobLootTrackerDB.minimap = MobLootTrackerDB.minimap or {
-    hide = false,
-    minimapPos = 220,
-}
+MobLootTrackerDB.profile    = MobLootTrackerDB.profile    or {}
+MobLootTrackerDB.minimap    = MobLootTrackerDB.minimap    or { hide = false, minimapPos = 220 }
 
 ---------------------------------------------------------
--- ACEDB DEFAULTS (NO MINIMAP HERE!)
+-- ACEDB DEFAULTS
 ---------------------------------------------------------
 local defaults = {
     profile = {
-        showNPCID      = false,
-        showDropRates  = true,
-        enableSkinning = true,
         debugMode      = false,
+        enableSkinning = true,
     },
     global = {
         MobLootDB = MobLootTrackerDB.global.MobLootDB,
@@ -43,15 +53,10 @@ local defaults = {
 ---------------------------------------------------------
 -- SAFE DB ACCESS
 ---------------------------------------------------------
-function MobLootTracker:GetDB()
-    if self.db and self.db.global and self.db.global.MobLootDB then
-        return self.db.global.MobLootDB
+local function SafeDB()
+    if MobLootTracker.db and MobLootTracker.db.global and MobLootTracker.db.global.MobLootDB then
+        return MobLootTracker.db.global.MobLootDB
     end
-
-    -- Fallback BEFORE OnInitialize
-    MobLootTrackerDB.global = MobLootTrackerDB.global or {}
-    MobLootTrackerDB.global.MobLootDB = MobLootTrackerDB.global.MobLootDB or {}
-
     return MobLootTrackerDB.global.MobLootDB
 end
 
@@ -67,222 +72,6 @@ function MobLootTracker:SetSetting(key, val)
     if self.db and self.db.profile then
         self.db.profile[key] = val
     end
-end
-
----------------------------------------------------------
--- ITEM COLOR HELPER
----------------------------------------------------------
-local function MLT_GetItemColor(itemID)
-    local _, _, itemRarity = GetItemInfo(itemID)
-    if not itemRarity then
-        return "|cffffffff"
-    end
-    return select(4, GetItemQualityColor(itemRarity))
-end
-
----------------------------------------------------------
--- GUID → NPCID (AzerothCore F1xx format)
----------------------------------------------------------
-local function ResolveNPCIDFromGUID(guid)
-    if not guid then return nil end
-    local entryHex = guid:match("^0xF1%x%x(%x%x%x%x%x%x)")
-    return entryHex and tonumber(entryHex, 16) or nil
-end
-
----------------------------------------------------------
--- INITIALIZE (SAFE)
----------------------------------------------------------
-function MobLootTracker:OnInitialize()
-    -- AceDB init (binds to existing SavedVariables)
-    self.db = AceDB:New("MobLootTrackerDB", defaults, true)
-
-    -- Events
-    self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
-    self:RegisterEvent("LOOT_OPENED")
-
-    -- Tooltip hook
-    self:HookScript(GameTooltip, "OnTooltipSetUnit", "OnTooltipSetUnit")
-
-    -- Slash command
-    self:RegisterChatCommand("mlt", "ShowGUI")
-
-    -- Minimap icon (external SavedVariables)
-    if self.InitMinimap then
-        self:InitMinimap()
-    end
-
-    self:Print("MobLootTracker loaded (safe DB + AzerothCore F1 GUID)")
-end
-
----------------------------------------------------------
--- KILL TRACKING
----------------------------------------------------------
-local recentKills = {}
-local lastGUID = nil
-
-function MobLootTracker:COMBAT_LOG_EVENT_UNFILTERED(_, ...)
-    local _, subEvent, _, _, _, _, dstGUID = ...
-
-    if subEvent == "UNIT_DIED" and dstGUID then
-        local npcID = ResolveNPCIDFromGUID(dstGUID)
-        if npcID then
-            recentKills[npcID] = true
-            lastGUID = dstGUID
-        end
-    end
-end
-
----------------------------------------------------------
--- LOOT TRACKING + NPC NAME + ZONE STORAGE
----------------------------------------------------------
-function MobLootTracker:LOOT_OPENED()
-    local db = self:GetDB()
-    local npcID = nil
-
-    -- Prefer recent kill
-    for id in pairs(recentKills) do npcID = id break end
-
-    -- Fallback: target/mouseover
-    if not npcID then
-        local guid = UnitGUID("target") or UnitGUID("mouseover")
-        npcID = guid and ResolveNPCIDFromGUID(guid)
-        lastGUID = guid
-    end
-
-    -- Fallback: last GUID
-    if not npcID and lastGUID then
-        npcID = ResolveNPCIDFromGUID(lastGUID)
-    end
-
-    if not npcID then return end
-
-    -- Ensure mob entry exists
-    db[npcID] = db[npcID] or {
-        kills    = 0,
-        items    = {},
-        skinning = {},
-        zones    = {},
-    }
-
-    local npcData = db[npcID]
-
-    -- Store NPC name
-    local name = UnitName("target") or UnitName("mouseover") or ("NPC "..npcID)
-    npcData.name = name
-
-    -- Store zone
-    local zoneName = GetZoneText() or "Unknown Zone"
-    npcData.zones[zoneName] = true
-
-    -- Increment kill count
-    npcData.kills = (npcData.kills or 0) + 1
-    recentKills[npcID] = nil
-
-    -- Record loot
-    for slot = 1, GetNumLootItems() do
-        local link = GetLootSlotLink(slot)
-        if link then
-            local itemID = tonumber(link:match("item:(%d+)"))
-            if itemID then
-                npcData.items[itemID] = npcData.items[itemID] or { count = 0 }
-                npcData.items[itemID].count = npcData.items[itemID].count + 1
-            end
-        end
-    end
-end
-
----------------------------------------------------------
--- NPC TOOLTIP (Zones + Colors + Drop Rates)
----------------------------------------------------------
-function MobLootTracker:OnTooltipSetUnit(tooltip)
-    local _, unit = tooltip:GetUnit()
-    if not unit then return end
-
-    local guid = UnitGUID(unit)
-    if not guid then return end
-
-    if not guid:match("^0xF1") then return end
-
-    local npcID = ResolveNPCIDFromGUID(guid)
-    if not npcID then return end
-
-    local db = self:GetDB()
-    local npcData = db[npcID]
-    if not npcData then return end
-
-    npcData.items    = npcData.items    or {}
-    npcData.skinning = npcData.skinning or {}
-    npcData.zones    = npcData.zones    or {}
-    npcData.kills    = npcData.kills    or 0
-
-    local npcName = npcData.name or ("NPC "..npcID)
-    tooltip:AddLine(npcName, 1, 0.9, 0.4)
-
-    if next(npcData.zones) then
-        local zoneList = ""
-        for zoneName in pairs(npcData.zones) do
-            zoneList = zoneList .. zoneName .. ", "
-        end
-        zoneList = zoneList:gsub(", $", "")
-        tooltip:AddLine("Zone: " .. zoneList, 0.7, 0.9, 1)
-    end
-
-    if next(npcData.items) then
-        tooltip:AddLine("Known Drops:", 0.8, 0.8, 0.2)
-
-        for itemID, data in pairs(npcData.items) do
-            local name  = GetItemInfo(itemID)
-            local count = data.count or 0
-            local rate  = npcData.kills > 0 and (count / npcData.kills * 100) or 0
-            local color = MLT_GetItemColor(itemID)
-
-            tooltip:AddLine(string.format(
-                "  %s%s|r x%d (%.1f%%)",
-                color, name or ("Item "..itemID), count, rate
-            ))
-        end
-    end
-end
--- MobLootTracker.lua – FINAL FULL VERSION (AzerothCore F1 GUID + Zones + Colors)
-
-MobLootTracker = LibStub("AceAddon-3.0"):NewAddon(
-    "MobLootTracker",
-    "AceConsole-3.0",
-    "AceEvent-3.0",
-    "AceHook-3.0"
-)
-
-
-local AceDB = LibStub("AceDB-3.0")
-
----------------------------------------------------------
--- DATABASE
----------------------------------------------------------
-local defaults = {
-    profile = {
-        showNPCID      = false,
-        showDropRates  = true,
-        enableSkinning = true,
-        debugMode      = false,
-    },
-    global = {
-        MobLootDB = {},
-    },
-}
-
-function MobLootTracker:GetDB()
-    return self.db.global.MobLootDB
-end
-
----------------------------------------------------------
--- ITEM COLOR HELPER
----------------------------------------------------------
-local function MLT_GetItemColor(itemID)
-    local _, _, itemRarity = GetItemInfo(itemID)
-    if not itemRarity then
-        return "|cffffffff" -- fallback: white
-    end
-    return select(4, GetItemQualityColor(itemRarity))
 end
 
 ---------------------------------------------------------
@@ -304,15 +93,16 @@ function MobLootTracker:OnInitialize()
     self:RegisterEvent("LOOT_OPENED")
 
     self:HookScript(GameTooltip, "OnTooltipSetUnit", "OnTooltipSetUnit")
+    self:RegisterChatCommand("mlt", "ShowGUI")
 
-    self:Print("MobLootTracker loaded (zones + colors + AzerothCore F1 GUID)")
+    self:Print("MobLootTracker loaded (ny core + leather-integration).")
 end
 
 ---------------------------------------------------------
 -- KILL TRACKING
 ---------------------------------------------------------
 local recentKills = {}
-local lastGUID = nil
+local lastGUID    = nil
 
 function MobLootTracker:COMBAT_LOG_EVENT_UNFILTERED(_, ...)
     local _, subEvent, _, _, _, _, dstGUID = ...
@@ -327,124 +117,134 @@ function MobLootTracker:COMBAT_LOG_EVENT_UNFILTERED(_, ...)
 end
 
 ---------------------------------------------------------
--- LOOT TRACKING + NPC NAME + ZONE STORAGE
+-- LOOT TRACKING (Leather → skinning, resten → items)
 ---------------------------------------------------------
 function MobLootTracker:LOOT_OPENED()
-    local db = self:GetDB()
+    local db    = SafeDB()
     local npcID = nil
 
-    -- Prefer recent kill
+    -- brug seneste kill først
     for id in pairs(recentKills) do npcID = id break end
 
-    -- Fallback: target or mouseover
     if not npcID then
         local guid = UnitGUID("target") or UnitGUID("mouseover")
         npcID = guid and ResolveNPCIDFromGUID(guid)
         lastGUID = guid
     end
 
-    -- Fallback: last GUID
     if not npcID and lastGUID then
         npcID = ResolveNPCIDFromGUID(lastGUID)
     end
 
     if not npcID then return end
 
-    -- Ensure mob entry exists
     db[npcID] = db[npcID] or {
-        kills = 0,
-        items = {},
+        kills    = 0,
+        items    = {},
         skinning = {},
-        zones = {},
+        zones    = {},
     }
 
     local npcData = db[npcID]
 
-    -- Store NPC name
-    local name = UnitName("target") or UnitName("mouseover") or ("NPC "..npcID)
-    npcData.name = name
-
-    -- Store zone
-    local zoneName = GetZoneText() or "Unknown Zone"
-    npcData.zones[zoneName] = true
-
-    -- Increment kill count
-    npcData.kills = npcData.kills + 1
+    npcData.name = UnitName("target") or UnitName("mouseover") or ("NPC "..npcID)
+    npcData.zones[GetZoneText() or "Unknown Zone"] = true
+    npcData.kills = (npcData.kills or 0) + 1
     recentKills[npcID] = nil
 
-    -- Record loot
     for slot = 1, GetNumLootItems() do
         local link = GetLootSlotLink(slot)
         if link then
             local itemID = tonumber(link:match("item:(%d+)"))
             if itemID then
-                npcData.items[itemID] = npcData.items[itemID] or { count = 0 }
-                npcData.items[itemID].count = npcData.items[itemID].count + 1
+                if LEATHER_ITEMS[itemID] and self:GetSetting("enableSkinning") then
+                    npcData.skinning[itemID] = npcData.skinning[itemID] or { count = 0 }
+                    npcData.skinning[itemID].count = npcData.skinning[itemID].count + 1
+                else
+                    npcData.items[itemID] = npcData.items[itemID] or { count = 0 }
+                    npcData.items[itemID].count = npcData.items[itemID].count + 1
+                end
             end
         end
     end
 end
 
 ---------------------------------------------------------
--- NPC TOOLTIP (Zones + Colors + Drop Rates)
+-- TOOLTIP (Loot + Skinning)
 ---------------------------------------------------------
 function MobLootTracker:OnTooltipSetUnit(tooltip)
     local _, unit = tooltip:GetUnit()
     if not unit then return end
 
     local guid = UnitGUID(unit)
-    if not guid then return end
-
-    -- Must be AzerothCore NPC GUID
-    if not guid:match("^0xF1") then return end
+    if not guid or not guid:match("^0xF1") then return end
 
     local npcID = ResolveNPCIDFromGUID(guid)
     if not npcID then return end
 
-    local db = self:GetDB()
+    local db = SafeDB()
     local npcData = db[npcID]
     if not npcData then return end
 
-    -- Ensure all tables exist (fixes nil errors)
-    npcData.items   = npcData.items   or {}
+    npcData.items    = npcData.items    or {}
     npcData.skinning = npcData.skinning or {}
-    npcData.zones   = npcData.zones   or {}
-    npcData.kills   = npcData.kills   or 0
+    npcData.zones    = npcData.zones    or {}
+    npcData.kills    = npcData.kills    or 0
 
     -----------------------------------------------------
-    -- NPC NAME
+    -- HEADER
     -----------------------------------------------------
-    local npcName = npcData.name or ("NPC "..npcID)
-    tooltip:AddLine(npcName, 1, 0.9, 0.4)
+    tooltip:AddLine(npcData.name or ("NPC "..npcID), 1, 0.9, 0.4)
 
     -----------------------------------------------------
-    -- ZONE DISPLAY
+    -- ZONES
     -----------------------------------------------------
     if next(npcData.zones) then
-        local zoneList = ""
-        for zoneName in pairs(npcData.zones) do
-            zoneList = zoneList .. zoneName .. ", "
-        end
-        zoneList = zoneList:gsub(", $", "")
-        tooltip:AddLine("Zone: " .. zoneList, 0.7, 0.9, 1)
+        local zones = ""
+        for z in pairs(npcData.zones) do zones = zones..z..", " end
+        zones = zones:gsub(", $","")
+        tooltip:AddLine("Zone: "..zones, 0.7, 0.9, 1)
     end
 
     -----------------------------------------------------
-    -- DROPS
+    -- NORMAL LOOT
     -----------------------------------------------------
     if next(npcData.items) then
-        tooltip:AddLine("Known Drops:", 0.8, 0.8, 0.2)
-
+        tooltip:AddLine("Drops:", 0.8, 0.8, 0.2)
         for itemID, data in pairs(npcData.items) do
-            local name = GetItemInfo(itemID)
-            local count = data.count or 0
-            local rate = npcData.kills > 0 and (count / npcData.kills * 100) or 0
-            local color = MLT_GetItemColor(itemID)
+            local name   = GetItemInfo(itemID)
+            local rarity = select(3, GetItemInfo(itemID)) or 1
+            local color  = select(4, GetItemQualityColor(rarity))
+            local rate   = npcData.kills > 0 and (data.count / npcData.kills * 100) or 0
 
             tooltip:AddLine(string.format(
                 "  %s%s|r x%d (%.1f%%)",
-                color, name or ("Item "..itemID), count, rate
+                color or "|cffffffff",
+                name or ("Item "..itemID),
+                data.count,
+                rate
+            ))
+        end
+    end
+
+    -----------------------------------------------------
+    -- SKINNING LOOT (THIS WAS MISSING)
+    -----------------------------------------------------
+    if next(npcData.skinning) then
+        tooltip:AddLine("Skinning:", 0.8, 0.6, 0.2)
+
+        for itemID, data in pairs(npcData.skinning) do
+            local name   = GetItemInfo(itemID)
+            local rarity = select(3, GetItemInfo(itemID)) or 1
+            local color  = select(4, GetItemQualityColor(rarity))
+
+            tooltip:AddLine(string.format(
+                "  %s%s|r x%d",
+                color or "|cffffffff",
+                name or ("Item "..itemID),
+                data.count
             ))
         end
     end
 end
+
