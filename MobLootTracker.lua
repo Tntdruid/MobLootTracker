@@ -157,7 +157,8 @@ function MobLootTracker:LOOT_OPENED()
         if link then
             local itemID = tonumber(link:match("item:(%d+)"))
             if itemID then
-                if LEATHER_ITEMS[itemID] and self:GetSetting("enableSkinning") then
+                -- FIX: leather går altid i skinning
+                if LEATHER_ITEMS[itemID] then
                     npcData.skinning[itemID] = npcData.skinning[itemID] or { count = 0 }
                     npcData.skinning[itemID].count = npcData.skinning[itemID].count + 1
                 else
@@ -167,40 +168,6 @@ function MobLootTracker:LOOT_OPENED()
             end
         end
     end
-end
-
----------------------------------------------------------
--- TOOLTIP DUPLICATION FIX (FULL FALLBACK)
----------------------------------------------------------
-local function TooltipHasMLT(tooltip, npcName, npcID)
-    for i = 1, tooltip:NumLines() do
-        local line = _G["GameTooltipTextLeft"..i]
-        if line then
-            local txt = line:GetText()
-            if txt then
-                -- Header match
-                if txt == npcName then
-                    return true
-                end
-
-                -- NPC ID match
-                if txt:find("NPC "..npcID) then
-                    return true
-                end
-
-                -- Zone match
-                if txt:find("Zone: ") then
-                    return true
-                end
-
-                -- Loot sections
-                if txt:find("Drops:") or txt:find("Known Drops") or txt:find("Skinning:") then
-                    return true
-                end
-            end
-        end
-    end
-    return false
 end
 
 ---------------------------------------------------------
@@ -218,11 +185,6 @@ function MobLootTracker:OnTooltipSetUnit(tooltip)
 
     local npcName = UnitName(unit) or ("NPC "..npcID)
 
-    -- STOP DUPLIKERING (header + fallback)
-    if TooltipHasMLT(tooltip, npcName, npcID) then
-        return
-    end
-
     local db = SafeDB()
     local npcData = db[npcID]
     if not npcData then return end
@@ -232,14 +194,8 @@ function MobLootTracker:OnTooltipSetUnit(tooltip)
     npcData.zones    = npcData.zones    or {}
     npcData.kills    = npcData.kills    or 0
 
-    -----------------------------------------------------
-    -- HEADER
-    -----------------------------------------------------
     tooltip:AddLine(npcName, 1, 0.9, 0.4)
 
-    -----------------------------------------------------
-    -- ZONES
-    -----------------------------------------------------
     if next(npcData.zones) then
         local zones = ""
         for z in pairs(npcData.zones) do zones = zones..z..", " end
@@ -247,9 +203,6 @@ function MobLootTracker:OnTooltipSetUnit(tooltip)
         tooltip:AddLine("Zone: "..zones, 0.7, 0.9, 1)
     end
 
-    -----------------------------------------------------
-    -- NORMAL LOOT
-    -----------------------------------------------------
     if next(npcData.items) then
         tooltip:AddLine("Drops:", 0.8, 0.8, 0.2)
         for itemID, data in pairs(npcData.items) do
@@ -268,12 +221,8 @@ function MobLootTracker:OnTooltipSetUnit(tooltip)
         end
     end
 
-    -----------------------------------------------------
-    -- SKINNING LOOT
-    -----------------------------------------------------
     if next(npcData.skinning) then
         tooltip:AddLine("Skinning:", 0.8, 0.6, 0.2)
-
         for itemID, data in pairs(npcData.skinning) do
             local name   = GetItemInfo(itemID)
             local rarity = select(3, GetItemInfo(itemID)) or 1
@@ -290,7 +239,10 @@ function MobLootTracker:OnTooltipSetUnit(tooltip)
 end
 
 ---------------------------------------------------------
--- SIMPLE GUI (placeholder) – /mlt
+-- SIMPLE GUI – /mlt
+---------------------------------------------------------
+---------------------------------------------------------
+-- SIMPLE GUI – /mlt
 ---------------------------------------------------------
 function MobLootTracker:ShowGUI()
     local db = SafeDB()
