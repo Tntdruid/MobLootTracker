@@ -87,16 +87,23 @@ end
 -- INITIALIZE
 ---------------------------------------------------------
 function MobLootTracker:OnInitialize()
+    -- Opret AceDB med defaults
     self.db = AceDB:New("MobLootTrackerDB", defaults, true)
 
+    -- Registrer events
     self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
     self:RegisterEvent("LOOT_OPENED")
 
+    -- Hook GameTooltip til mob‑tooltip funktionen
     self:HookScript(GameTooltip, "OnTooltipSetUnit", "OnTooltipSetUnit")
+
+    -- Chat command til GUI
     self:RegisterChatCommand("mlt", "ShowGUI")
 
-    self:Print("MobLootTracker loaded (ny core + leather-integration).")
+    -- Debug besked
+    self:Print("MobLootTracker loaded (core + mob‑tooltip aktiv).")
 end
+
 
 ---------------------------------------------------------
 -- KILL TRACKING
