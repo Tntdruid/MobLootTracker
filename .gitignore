@@ -1,0 +1,15 @@
+# VS Code / editor files
+.vscode/
+*.code-workspace
+
+# OS files
+Thumbs.db
+Desktop.ini
+
+# Common temp/log files
+*.log
+*.tmp
+*.bak
+
+# Lua local tooling
+.luarc.json
