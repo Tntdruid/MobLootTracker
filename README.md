@@ -1,98 +1,84 @@
 # MobLootTracker
 
-MobLootTracker is a lightweight loot‑tracking addon for **AzerothCore (WotLK)**.  
-It records item drops from NPCs and displays the collected data directly inside item tooltips, giving players accurate, personal drop‑rate information while farming.
+## Dansk
 
----
+MobLootTracker er en letvaegts World of Warcraft-addon til **WoW 3.3.5a** og **AzerothCore**. Den registrerer dine egne kills, loot og skinning-drops og viser resultaterne direkte i spillets tooltips.
 
-## Features
+### Funktioner
 
-### ✔ Automatic loot tracking
-- Records every item dropped by NPCs you kill  
-- Tracks how many times each NPC has been killed  
-- Stores NPC names directly in the database  
-- Calculates drop rates based on your own gameplay  
+- Registrerer antal kills pr. NPC
+- Gemmer normale loot-drops separat fra skinning-materialer
+- Viser NPC-navn, zone og personlige dropdata
+- Viser hvilke NPC'er der dropper et bestemt item
+- Viser antal registrerede drops og personlige drop rates
+- Virker med bag- og inventory-tooltips
+- Gemmer data i WoW SavedVariables
+- Indeholder en enkel oversigt via `/mlt`
 
-### ✔ Tooltip integration
-Item tooltips show:
-- Which NPCs drop the item  
-- Drop percentages  
-- Number of drops  
-- Skinning sources (optional)  
-- Bag and inventory item hover sources for tracked drops
+### Saadan virker det
 
-### ✔ Full bag addon compatibility
-Works with:
-- Bagnon  
-- Adibags  
-- ElvUI bags  
-- ArkInventory  
-- Combuctor  
-- TSM bags  
-- Any custom inventory addon
+1. Drab registreres fra combat loggen.
+2. NPC'ens GUID bruges til at finde NPC-ID'et.
+3. Loot og skinning registreres, naar loot-vinduet aabnes.
+4. Data gemmes lokalt og vises, naar du holder musen over NPC'er eller items.
 
-### ✔ Hover support for bag items
-- Hovering a tracked item in your bags now shows source NPCs  
-- Works with standard item tooltips and inventory item hover UI  
-- Helps identify drops without needing to open the database manually
+### Installation
 
-### ✔ Debug mode
-Enable debug mode to show extra information such as:
-- Items with no collected data  
-- Internal tracking details  
+Kopiér addon-mappen til:
 
-Toggle with:
-/mltdebug
+`World of Warcraft\Interface\AddOns\MobLootTracker`
 
----
+Aktivér **Load out of date AddOns** i 3.3.5a-klienten, hvis det er nødvendigt.
 
-## How it works
+### Kommandoer
 
-MobLootTracker listens for:
-- `UNIT_DIED` (to detect NPC kills)  
-- `LOOT_OPENED` (to record item drops)
+- `/mlt` aabner addonens oversigt.
 
-When you loot an NPC:
-1. The addon identifies the NPC by GUID  
-2. Stores the NPC name  
-3. Records each item dropped  
-4. Increments kill count  
-5. Updates drop statistics  
+Addonens statistik er personlig og baseret paa dine egne kills og drops, ikke paa en global drop database.
 
-When you hover a tracked item, the tooltip displays all collected data for that item, including which NPCs can drop it from your recorded kills and skinning data.
+## English
 
----
+MobLootTracker is a lightweight World of Warcraft addon for **WoW 3.3.5a** and **AzerothCore**. It records your personal kills, loot, and skinning drops, then displays the collected data directly in in-game tooltips.
 
-## Commands
+### Features
 
-/mltnpcid on/off   – show NPC ID in unit tooltips
-/mltdebug          – toggle debug mode
+- Tracks kill totals for each NPC
+- Separates regular loot from skinning materials
+- Stores NPC names, zones, and personal drop data
+- Shows which NPCs can drop a selected item
+- Displays recorded drop totals and personal drop rates
+- Works with bag and inventory tooltips
+- Stores data in WoW SavedVariables
+- Includes a simple overview opened with `/mlt`
 
----
+### How it works
+
+1. NPC deaths are detected through the combat log.
+2. The NPC GUID is resolved to an NPC ID.
+3. Loot and skinning are recorded when the loot window opens.
+4. The data is stored locally and shown when hovering NPCs or items.
+
+### Installation
+
+Copy the addon folder to:
+
+`World of Warcraft\Interface\AddOns\MobLootTracker`
+
+Enable **Load out of date AddOns** in the 3.3.5a client if required.
+
+### Commands
+
+- `/mlt` opens the addon overview.
+
+All statistics are personal and based on your own kills and drops rather than a global drop database.
 
 ## Compatibility
 
-- AzerothCore (WotLK)  
-- All major bag addons  
-- All tooltip addons (TipTac, TinyTip, ElvUI, etc.)  
-- Works alongside other loot addons without conflict  
-
----
-
-## Why use MobLootTracker?
-
-MobLootTracker is ideal for:
-- Farmers  
-- Gold makers  
-- Completionists  
-- Developers  
-- Anyone who wants accurate, personal drop‑rate data  
-
-It gives you **your own** statistics — not database averages — making farming more efficient and predictable.
-
----
+- World of Warcraft 3.3.5a
+- AzerothCore WotLK servers
+- Standard unit, item, bag, and inventory tooltips
 
 ## License
 
-MIT License (recommended for open‑source projects)
+MIT License
 

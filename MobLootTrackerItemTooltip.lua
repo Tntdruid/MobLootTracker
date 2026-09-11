@@ -30,6 +30,7 @@ local function TooltipHasMobLootLines(tooltip)
             local text = line:GetText() or ""
             if text:find("Known Drops", 1, true)
                 or text:find("Skinning:", 1, true)
+                or text:find("Skinning sources:", 1, true)
                 or text:find("Drops from:", 1, true)
                 or text:find("MobLootTracker", 1, true)
                 or text:find("Zone:", 1, true)
@@ -44,16 +45,16 @@ end
 local function GetTrackedItemSources(itemID)
     local db = SafeDB()
     if not itemID or not db then
-        return {}
+        return { drops = {}, skinning = {} }
     end
 
-    local sources = {}
+    local sources = { drops = {}, skinning = {} }
 
     for npcID, npcData in pairs(db) do
         if npcData then
             local dropData = npcData.items and npcData.items[itemID]
             if dropData then
-                sources[#sources + 1] = {
+                sources.drops[#sources.drops + 1] = {
                     name = npcData.name or ("NPC " .. npcID),
                     count = dropData.count or 0,
                     kills = npcData.kills or 0,
@@ -63,7 +64,7 @@ local function GetTrackedItemSources(itemID)
 
             local skinData = npcData.skinning and npcData.skinning[itemID]
             if skinData then
-                sources[#sources + 1] = {
+                sources.skinning[#sources.skinning + 1] = {
                     name = npcData.name or ("NPC " .. npcID),
                     count = skinData.count or 0,
                     kills = npcData.kills or 0,
@@ -73,7 +74,11 @@ local function GetTrackedItemSources(itemID)
         end
     end
 
-    table.sort(sources, function(a, b)
+    table.sort(sources.drops, function(a, b)
+        return (a.count or 0) > (b.count or 0)
+    end)
+
+    table.sort(sources.skinning, function(a, b)
         return (a.count or 0) > (b.count or 0)
     end)
 
@@ -121,6 +126,8 @@ local function AddUnitLootToTooltip(tooltip, unit)
         tooltip:AddLine("Zone: " .. zones, 0.7, 0.9, 1)
     end
 
+    tooltip:AddLine("Kills: " .. tostring(npcData.kills), 0.7, 1, 0.7)
+
     if next(npcData.items) then
         tooltip:AddLine("Known Drops:", 0.8, 0.8, 0.2)
         for itemID, data in pairs(npcData.items) do
@@ -145,12 +152,14 @@ local function AddUnitLootToTooltip(tooltip, unit)
             local itemName = GetItemInfo(itemID)
             local rarity = select(3, GetItemInfo(itemID)) or 1
             local color = select(4, GetItemQualityColor(rarity))
+            local rate = npcData.kills > 0 and (data.count / npcData.kills * 100) or 0
 
             tooltip:AddLine(string.format(
-                "  %s%s|r x%d",
+                "  %s%s|r x%d (%.1f%%)",
                 color or "|cffffffff",
                 itemName or ("Item " .. itemID),
-                data.count
+                data.count,
+                rate
             ))
         end
     end
@@ -162,35 +171,39 @@ local function AddItemSourceToTooltip(tooltip, itemID)
     end
 
     local sources = GetTrackedItemSources(itemID)
-    if not next(sources) then
+    local dropSources = sources.drops or {}
+    local skinningSources = sources.skinning or {}
+
+    if not next(dropSources) and not next(skinningSources) then
         return
     end
 
-    local hasSkinning = false
-    for _, source in ipairs(sources) do
-        if source.kind == "skinning" then
-            hasSkinning = true
-            break
+    tooltip:AddLine("MobLootTracker sources", 0.8, 0.8, 0.2)
+
+    if next(dropSources) then
+        tooltip:AddLine("Drops from:", 0.8, 0.8, 0.2)
+        for _, source in ipairs(dropSources) do
+            local rate = source.kills > 0 and ((source.count / source.kills) * 100) or 0
+            tooltip:AddLine(string.format(
+                "  %s x%d (%.1f%%)",
+                source.name,
+                source.count,
+                rate
+            ), 1, 1, 1)
         end
     end
 
-    if hasSkinning then
-        tooltip:AddLine("MobLootTracker", 0.8, 0.8, 0.2)
-    end
-
-    tooltip:AddLine(hasSkinning and "Drops from:" or "Drops from:", 0.8, 0.8, 0.2)
-
-    for _, source in ipairs(sources) do
-        local rate = source.kills > 0 and ((source.count / source.kills) * 100) or 0
-        local prefix = source.kind == "skinning" and "Skinning: " or "Drop: "
-
-        tooltip:AddLine(string.format(
-            "  %s%s x%d (%.1f%%)",
-            prefix,
-            source.name,
-            source.count,
-            rate
-        ), 1, 1, 1)
+    if next(skinningSources) then
+        tooltip:AddLine("Skinning sources:", 0.8, 0.6, 0.2)
+        for _, source in ipairs(skinningSources) do
+            local rate = source.kills > 0 and ((source.count / source.kills) * 100) or 0
+            tooltip:AddLine(string.format(
+                "  %s x%d (%.1f%%)",
+                source.name,
+                source.count,
+                rate
+            ), 1, 1, 1)
+        end
     end
 end
 

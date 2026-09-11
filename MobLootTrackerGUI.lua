@@ -13,16 +13,8 @@ local function SafeDB()
 end
 
 ---------------------------------------------------------
--- LEATHER LIST (samme som core)
+-- Skinning target materials are defined in the core addon and reused here.
 ---------------------------------------------------------
-local LEATHER_ITEMS = {
-    [2318]=true,[2319]=true,[4231]=true,[4232]=true,[4233]=true,[4234]=true,[4235]=true,
-    [4461]=true,[6470]=true,[6471]=true,[7286]=true,[7287]=true,[7392]=true,[8167]=true,
-    [8169]=true,[8170]=true,[8171]=true,
-    [21887]=true,[25649]=true,[25700]=true,[25707]=true,[25708]=true,[25703]=true,[25702]=true,
-    [23248]=true,[25421]=true,[25420]=true,
-    [33568]=true,[33567]=true,[38557]=true,[38558]=true,[38561]=true,[44128]=true,
-}
 
 ---------------------------------------------------------
 -- MAIN WINDOW
@@ -120,13 +112,14 @@ function MobLootTracker:BuildSkinTab(container)
             scroll:AddChild(header)
 
             for itemID, data in pairs(npcData.skinning) do
-                if LEATHER_ITEMS[itemID] then
+                if MobLootTracker:IsSkinningItem(itemID) then
                     local name   = GetItemInfo(itemID) or ("Item "..itemID)
                     local rarity = select(3, GetItemInfo(itemID)) or 1
                     local color  = select(4, GetItemQualityColor(rarity))
+                    local rate   = npcData.kills > 0 and (data.count / npcData.kills * 100) or 0
 
                     local label = AceGUI:Create("Label")
-                    label:SetText(string.format("• %s%s|r x%d", color, name, data.count))
+                    label:SetText(string.format("• %s%s|r x%d (%.1f%%)", color, name, data.count, rate))
                     label:SetFullWidth(true)
                     scroll:AddChild(label)
                 end
@@ -177,7 +170,7 @@ function MobLootTracker:BuildStatsTab(container)
         end
 
         for itemID, data in pairs(npcData.skinning or {}) do
-            if LEATHER_ITEMS[itemID] then
+            if MobLootTracker:IsSkinningItem(itemID) then
                 totalSkin = totalSkin + (data.count or 0)
             end
         end
@@ -185,7 +178,7 @@ function MobLootTracker:BuildStatsTab(container)
 
     local label = AceGUI:Create("Label")
     label:SetText(string.format(
-        "Total kills: %d\nTotal items looted: %d\nTotal leather items: %d",
+        "Total kills: %d\nTotal loot items: %d\nTotal skinning items: %d",
         totalKills, totalItems, totalSkin))
     label:SetFullWidth(true)
     container:AddChild(label)
