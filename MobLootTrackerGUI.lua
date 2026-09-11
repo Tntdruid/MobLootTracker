@@ -38,6 +38,7 @@ function MobLootTracker:ShowGUI()
     local tabs = {
         { text="Loot",     value="loot" },
         { text="Skinning", value="skin" },
+        { text="Quest",    value="quest" },
         { text="NPCs",     value="npc" },
         { text="Stats",    value="stats" },
         { text="Settings", value="settings" },
@@ -53,6 +54,7 @@ function MobLootTracker:ShowGUI()
         container:ReleaseChildren()
         if group=="loot" then self:BuildLootTab(container)
         elseif group=="skin" then self:BuildSkinTab(container)
+        elseif group=="quest" then self:BuildQuestTab(container)
         elseif group=="npc" then self:BuildNPCTab(container)
         elseif group=="stats" then self:BuildStatsTab(container)
         elseif group=="settings" then self:BuildSettingsTab(container)
@@ -60,6 +62,38 @@ function MobLootTracker:ShowGUI()
     end)
 
     self:BuildLootTab(tabGroup)
+end
+
+---------------------------------------------------------
+-- QUEST TAB
+---------------------------------------------------------
+function MobLootTracker:BuildQuestTab(container)
+    local db = SafeDB()
+    local scroll = AceGUI:Create("ScrollFrame")
+    scroll:SetLayout("Flow")
+    scroll:SetFullWidth(true)
+    scroll:SetFullHeight(true)
+    container:AddChild(scroll)
+
+    for npcID, npcData in pairs(db) do
+        if npcData.quest and next(npcData.quest) then
+            local header = AceGUI:Create("Heading")
+            header:SetText(string.format("%s (ID %d) - Quest items", npcData.name or ("NPC "..npcID), npcID))
+            scroll:AddChild(header)
+
+            for itemID, data in pairs(npcData.quest) do
+                local name = GetItemInfo(itemID) or ("Item "..itemID)
+                local rarity = select(3, GetItemInfo(itemID)) or 1
+                local color = select(4, GetItemQualityColor(rarity))
+                local rate = npcData.kills > 0 and (data.count / npcData.kills * 100) or 0
+
+                local label = AceGUI:Create("Label")
+                label:SetText(string.format("- %s%s|r x%d (%.1f%%)", color, name, data.count, rate))
+                label:SetFullWidth(true)
+                scroll:AddChild(label)
+            end
+        end
+    end
 end
 
 ---------------------------------------------------------
@@ -160,7 +194,7 @@ end
 ---------------------------------------------------------
 function MobLootTracker:BuildStatsTab(container)
     local db = SafeDB()
-    local totalKills, totalItems, totalSkin = 0, 0, 0
+    local totalKills, totalItems, totalSkin, totalQuest = 0, 0, 0, 0
 
     for _, npcData in pairs(db) do
         totalKills = totalKills + (npcData.kills or 0)
@@ -174,12 +208,16 @@ function MobLootTracker:BuildStatsTab(container)
                 totalSkin = totalSkin + (data.count or 0)
             end
         end
+
+        for itemID, data in pairs(npcData.quest or {}) do
+            totalQuest = totalQuest + (data.count or 0)
+        end
     end
 
     local label = AceGUI:Create("Label")
     label:SetText(string.format(
-        "Total kills: %d\nTotal loot items: %d\nTotal skinning items: %d",
-        totalKills, totalItems, totalSkin))
+        "Total kills: %d\nTotal loot items: %d\nTotal skinning items: %d\nTotal quest items: %d",
+        totalKills, totalItems, totalSkin, totalQuest))
     label:SetFullWidth(true)
     container:AddChild(label)
 end

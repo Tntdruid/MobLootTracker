@@ -7,10 +7,10 @@ MobLootTracker er en letvaegts World of Warcraft-addon til **WoW 3.3.5a** og **A
 ### Funktioner
 
 - Registrerer antal kills pr. NPC
-- Gemmer normale loot-drops separat fra skinning-materialer
+- Gemmer normale loot-drops, quest items og skinning-materialer separat
 - Viser NPC-navn, zone og personlige dropdata
 - Viser hvilke NPC'er der dropper et bestemt item
-- Viser antal registrerede drops og personlige drop rates
+- Viser antal registrerede drops og personlige drop rates for hver kategori
 - Virker med bag- og inventory-tooltips
 - Gemmer data i WoW SavedVariables
 - Indeholder en enkel oversigt via `/mlt`
@@ -43,10 +43,10 @@ MobLootTracker is a lightweight World of Warcraft addon for **WoW 3.3.5a** and *
 ### Features
 
 - Tracks kill totals for each NPC
-- Separates regular loot from skinning materials
+- Separates regular loot, quest items, and skinning materials
 - Stores NPC names, zones, and personal drop data
 - Shows which NPCs can drop a selected item
-- Displays recorded drop totals and personal drop rates
+- Displays recorded drop totals and personal drop rates for each category
 - Works with bag and inventory tooltips
 - Stores data in WoW SavedVariables
 - Includes a simple overview opened with `/mlt`

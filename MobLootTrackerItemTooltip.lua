@@ -30,7 +30,9 @@ local function TooltipHasMobLootLines(tooltip)
             local text = line:GetText() or ""
             if text:find("Known Drops", 1, true)
                 or text:find("Skinning:", 1, true)
+                or text:find("Quest items:", 1, true)
                 or text:find("Skinning sources:", 1, true)
+                or text:find("Quest item sources:", 1, true)
                 or text:find("Drops from:", 1, true)
                 or text:find("MobLootTracker", 1, true)
                 or text:find("Zone:", 1, true)
@@ -45,10 +47,10 @@ end
 local function GetTrackedItemSources(itemID)
     local db = SafeDB()
     if not itemID or not db then
-        return { drops = {}, skinning = {} }
+        return { drops = {}, skinning = {}, quest = {} }
     end
 
-    local sources = { drops = {}, skinning = {} }
+    local sources = { drops = {}, skinning = {}, quest = {} }
 
     for npcID, npcData in pairs(db) do
         if npcData then
@@ -71,6 +73,16 @@ local function GetTrackedItemSources(itemID)
                     kind = "skinning",
                 }
             end
+
+            local questData = npcData.quest and npcData.quest[itemID]
+            if questData then
+                sources.quest[#sources.quest + 1] = {
+                    name = npcData.name or ("NPC " .. npcID),
+                    count = questData.count or 0,
+                    kills = npcData.kills or 0,
+                    kind = "quest",
+                }
+            end
         end
     end
 
@@ -79,6 +91,10 @@ local function GetTrackedItemSources(itemID)
     end)
 
     table.sort(sources.skinning, function(a, b)
+        return (a.count or 0) > (b.count or 0)
+    end)
+
+    table.sort(sources.quest, function(a, b)
         return (a.count or 0) > (b.count or 0)
     end)
 
@@ -112,6 +128,7 @@ local function AddUnitLootToTooltip(tooltip, unit)
 
     npcData.items = npcData.items or {}
     npcData.skinning = npcData.skinning or {}
+    npcData.quest = npcData.quest or {}
     npcData.zones = npcData.zones or {}
     npcData.kills = npcData.kills or 0
 
@@ -163,6 +180,24 @@ local function AddUnitLootToTooltip(tooltip, unit)
             ))
         end
     end
+
+    if next(npcData.quest) then
+        tooltip:AddLine("Quest items:", 0.5, 0.8, 1)
+        for itemID, data in pairs(npcData.quest) do
+            local itemName = GetItemInfo(itemID)
+            local rarity = select(3, GetItemInfo(itemID)) or 1
+            local color = select(4, GetItemQualityColor(rarity))
+            local rate = npcData.kills > 0 and (data.count / npcData.kills * 100) or 0
+
+            tooltip:AddLine(string.format(
+                "  %s%s|r x%d (%.1f%%)",
+                color or "|cffffffff",
+                itemName or ("Item " .. itemID),
+                data.count,
+                rate
+            ))
+        end
+    end
 end
 
 local function AddItemSourceToTooltip(tooltip, itemID)
@@ -173,8 +208,9 @@ local function AddItemSourceToTooltip(tooltip, itemID)
     local sources = GetTrackedItemSources(itemID)
     local dropSources = sources.drops or {}
     local skinningSources = sources.skinning or {}
+    local questSources = sources.quest or {}
 
-    if not next(dropSources) and not next(skinningSources) then
+    if not next(dropSources) and not next(skinningSources) and not next(questSources) then
         return
     end
 
@@ -196,6 +232,19 @@ local function AddItemSourceToTooltip(tooltip, itemID)
     if next(skinningSources) then
         tooltip:AddLine("Skinning sources:", 0.8, 0.6, 0.2)
         for _, source in ipairs(skinningSources) do
+            local rate = source.kills > 0 and ((source.count / source.kills) * 100) or 0
+            tooltip:AddLine(string.format(
+                "  %s x%d (%.1f%%)",
+                source.name,
+                source.count,
+                rate
+            ), 1, 1, 1)
+        end
+    end
+
+    if next(questSources) then
+        tooltip:AddLine("Quest item sources:", 0.5, 0.8, 1)
+        for _, source in ipairs(questSources) do
             local rate = source.kills > 0 and ((source.count / source.kills) * 100) or 0
             tooltip:AddLine(string.format(
                 "  %s x%d (%.1f%%)",

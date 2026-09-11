@@ -31,9 +31,21 @@ function MobLootTracker:IsSkinningItem(itemID)
     return itemID and SKINNING_ITEMS[itemID] == true
 end
 
+function MobLootTracker:IsQuestItem(itemID)
+    if not itemID or not GetItemInfo then
+        return false
+    end
+
+    local itemType = select(6, GetItemInfo(itemID))
+    return itemType == "Quest" or (ITEM_CLASS_QUEST and itemType == ITEM_CLASS_QUEST)
+end
+
 function MobLootTracker:GetLootCategory(itemID)
     if self:IsSkinningItem(itemID) and self:GetSetting("enableSkinning") then
         return "skinning"
+    end
+    if self:IsQuestItem(itemID) and self:GetSetting("enableQuestItems") then
+        return "quest"
     end
     return "loot"
 end
@@ -50,6 +62,7 @@ local defaults = {
     profile = {
         debugMode      = false,
         enableSkinning = true,
+        enableQuestItems = true,
     },
     global = {
         MobLootDB = {},
@@ -213,6 +226,7 @@ function MobLootTracker:COMBAT_LOG_EVENT_UNFILTERED(_, ...)
                 kills = 0,
                 items = {},
                 skinning = {},
+                quest = {},
                 zones = {},
             }
             db[npcID].name = db[npcID].name or (UnitName("target") or UnitName("mouseover") or ("NPC " .. npcID))
@@ -257,10 +271,12 @@ function MobLootTracker:LOOT_OPENED()
         kills    = 0,
         items    = {},
         skinning = {},
+        quest    = {},
         zones    = {},
     }
 
     local npcData = db[npcID]
+    npcData.quest = npcData.quest or {}
     npcData.name = UnitName("target") or UnitName("mouseover") or ("NPC "..npcID)
     npcData.zones[GetZoneText() or "Unknown Zone"] = true
 
@@ -273,6 +289,9 @@ function MobLootTracker:LOOT_OPENED()
                 if category == "skinning" then
                     npcData.skinning[itemID] = npcData.skinning[itemID] or { count = 0 }
                     npcData.skinning[itemID].count = npcData.skinning[itemID].count + 1
+                elseif category == "quest" then
+                    npcData.quest[itemID] = npcData.quest[itemID] or { count = 0 }
+                    npcData.quest[itemID].count = npcData.quest[itemID].count + 1
                 else
                     npcData.items[itemID] = npcData.items[itemID] or { count = 0 }
                     npcData.items[itemID].count = npcData.items[itemID].count + 1

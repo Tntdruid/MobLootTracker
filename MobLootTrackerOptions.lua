@@ -73,10 +73,25 @@ local options = {
             },
         },
 
+        quest = {
+            type = "group",
+            name = "Quest items",
+            order = 3,
+            args = {
+                enableQuestItems = {
+                    type = "toggle",
+                    name = "Aktiver quest-item tracking",
+                    desc = "Track quest items separat fra almindeligt loot",
+                    get = function() return MobLootTracker:GetSetting("enableQuestItems") end,
+                    set = function(_, val) MobLootTracker:SetSetting("enableQuestItems", val) end,
+                },
+            },
+        },
+
         minimap = {
             type = "group",
             name = "Minimap",
-            order = 3,
+            order = 4,
             args = {
 
                 enableMinimap = {
@@ -92,7 +107,7 @@ local options = {
         database = {
             type = "group",
             name = "Database",
-            order = 4,
+            order = 5,
             args = {
 
                 clearDB = {
@@ -117,16 +132,18 @@ local options = {
                         local mobs = 0
                         local items = 0
                         local skins = 0
+                        local quests = 0
 
                         for npcID, data in pairs(db) do
                             mobs = mobs + 1
                             for _, d in pairs(data.items) do items = items + d.count end
                             for _, d in pairs(data.skinning) do skins = skins + d.count end
+                            for _, d in pairs(data.quest or {}) do quests = quests + d.count end
                         end
 
                         return string.format(
-                            "Mobs: %d\nLoot-items: %d\nSkinning-items: %d",
-                            mobs, items, skins
+                            "Mobs: %d\nLoot-items: %d\nSkinning-items: %d\nQuest-items: %d",
+                            mobs, items, skins, quests
                         )
                     end,
                 },

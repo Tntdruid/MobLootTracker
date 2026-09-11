@@ -8,6 +8,7 @@ MobLootTrackerSettings = MobLootTrackerSettings or {
     showItemColors = true,   -- Vis item-farver i tooltip
     showDropRates  = true,   -- Vis droprates i tooltip
     enableSkinning = true,   -- Skinning-tracking
+    enableQuestItems = true, -- Quest-item tracking
     enableGraphs   = true,   -- Graphs i GUI
     enableMinimap  = true,   -- Minimap-knap
     debugMode      = false,  -- Debug output
