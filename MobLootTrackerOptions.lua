@@ -26,6 +26,14 @@ local options = {
                     set = function(_, val) MobLootTracker:SetSetting("showNPCID", val) end,
                 },
 
+                showMobName = {
+                    type = "toggle",
+                    name = "Vis mob-navn i tooltip",
+                    desc = "Vis MobLootTracker-navnet over loot-oplysningerne",
+                    get = function() return MobLootTracker:GetSetting("showMobName") ~= false end,
+                    set = function(_, val) MobLootTracker:SetSetting("showMobName", val) end,
+                },
+
                 showItemColors = {
                     type = "toggle",
                     name = "Item-farver",

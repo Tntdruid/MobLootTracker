@@ -18,5 +18,8 @@ MobLootTracker.lua
 MobLootTrackerItemTooltip.lua
 MobLootTrackerMinimap.lua
 
+# --- Options ---
+MobLootTrackerOptions.lua
+
 # --- GUI (must be last!) ---
 MobLootTrackerGUI.lua

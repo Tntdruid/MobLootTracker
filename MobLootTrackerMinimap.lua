@@ -28,6 +28,7 @@ local LDB   = LibStub("LibDataBroker-1.1"):NewDataObject("MobLootTracker", {
 local menuFrame = CreateFrame("Frame", "MobLootTrackerMinimapMenu", UIParent, "UIDropDownMenuTemplate")
 
 function addon:OpenMinimapMenu()
+    local minimapDB = addon.db.global.minimap
     local menu = {
         {
             text = "MobLootTracker",
@@ -43,7 +44,7 @@ function addon:OpenMinimapMenu()
             text = "Hide Minimap Icon",
             notCheckable = true,
             func = function()
-                MobLootTrackerDB.minimap.hide = true
+                minimapDB.hide = true
                 icon:Hide("MobLootTracker")
             end,
         },
@@ -51,8 +52,8 @@ function addon:OpenMinimapMenu()
             text = "Reset Position",
             notCheckable = true,
             func = function()
-                MobLootTrackerDB.minimap.minimapPos = 220
-                icon:Refresh("MobLootTracker", MobLootTrackerDB.minimap)
+                minimapDB.minimapPos = 220
+                icon:Refresh("MobLootTracker", minimapDB)
             end,
         },
     }
@@ -64,11 +65,11 @@ end
 -- INITIALIZE MINIMAP ICON
 ---------------------------------------------------------
 function addon:InitMinimap()
-    MobLootTrackerDB.minimap = MobLootTrackerDB.minimap or { hide = false, minimapPos = 220 }
+    local minimapDB = addon.db.global.minimap
 
-    icon:Register("MobLootTracker", LDB, MobLootTrackerDB.minimap)
+    icon:Register("MobLootTracker", LDB, minimapDB)
 
-    if MobLootTrackerDB.minimap.hide then
+    if minimapDB.hide then
         icon:Hide("MobLootTracker")
     else
         icon:Show("MobLootTracker")

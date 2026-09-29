@@ -5,6 +5,7 @@
 ---------------------------------------------------------
 MobLootTrackerSettings = MobLootTrackerSettings or {
     showNPCID      = false,  -- Vis NPCID i tooltip
+    showMobName    = true,   -- Vis MobLootTracker-mobnavn i tooltip
     showItemColors = true,   -- Vis item-farver i tooltip
     showDropRates  = true,   -- Vis droprates i tooltip
     enableSkinning = true,   -- Skinning-tracking

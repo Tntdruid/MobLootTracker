@@ -34,6 +34,7 @@ local function TooltipHasMobLootLines(tooltip)
                 or text:find("Skinning sources:", 1, true)
                 or text:find("Quest item sources:", 1, true)
                 or text:find("Drops from:", 1, true)
+                or text:find("Money looted:", 1, true)
                 or text:find("MobLootTracker", 1, true)
                 or text:find("Zone:", 1, true)
             then
@@ -131,8 +132,15 @@ local function AddUnitLootToTooltip(tooltip, unit)
     npcData.quest = npcData.quest or {}
     npcData.zones = npcData.zones or {}
     npcData.kills = npcData.kills or 0
+    npcData.money = npcData.money or 0
 
-    tooltip:AddLine(npcData.name or ("NPC " .. npcID), 1, 0.9, 0.4)
+    if MobLootTracker:GetSetting("showMobName") ~= false then
+        tooltip:AddLine(npcData.name or ("NPC " .. npcID), 1, 0.9, 0.4)
+    end
+
+    if MobLootTracker:GetSetting("showNPCID") then
+        tooltip:AddLine("Mob ID: " .. tostring(npcID), 0.7, 0.9, 1)
+    end
 
     if next(npcData.zones) then
         local zones = ""
@@ -144,6 +152,10 @@ local function AddUnitLootToTooltip(tooltip, unit)
     end
 
     tooltip:AddLine("Kills: " .. tostring(npcData.kills), 0.7, 1, 0.7)
+
+    if npcData.money > 0 then
+        tooltip:AddLine("Money looted: " .. MobLootTracker:FormatMoney(npcData.money), 1, 0.82, 0)
+    end
 
     if next(npcData.items) then
         tooltip:AddLine("Known Drops:", 0.8, 0.8, 0.2)

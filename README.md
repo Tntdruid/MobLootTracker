@@ -2,12 +2,13 @@
 
 ## Dansk
 
-MobLootTracker er en letvaegts World of Warcraft-addon til **WoW 3.3.5a** og **AzerothCore**. Den registrerer dine egne kills, loot og skinning-drops og viser resultaterne direkte i spillets tooltips.
+MobLootTracker er en letvægts World of Warcraft-addon til **WoW 3.3.5a** og **AzerothCore**. Den registrerer dine egne kills, loot og skinning-drops og viser resultaterne direkte i spillets tooltips.
 
 ### Funktioner
 
 - Registrerer antal kills pr. NPC
 - Gemmer normale loot-drops, quest items og skinning-materialer separat
+- Tracker samlet kobber fra monsteres penge-drop pr. NPC
 - Viser NPC-navn, zone og personlige dropdata
 - Viser hvilke NPC'er der dropper et bestemt item
 - Viser antal registrerede drops og personlige drop rates for hver kategori
@@ -15,12 +16,13 @@ MobLootTracker er en letvaegts World of Warcraft-addon til **WoW 3.3.5a** og **A
 - Gemmer data i WoW SavedVariables
 - Indeholder en enkel oversigt via `/mlt`
 
-### Saadan virker det
+### Sådan virker det
 
 1. Drab registreres fra combat loggen.
 2. NPC'ens GUID bruges til at finde NPC-ID'et.
-3. Loot og skinning registreres, naar loot-vinduet aabnes.
-4. Data gemmes lokalt og vises, naar du holder musen over NPC'er eller items.
+3. Loot og skinning registreres, når loot-vinduet åbnes.
+4. Penge fra loot-vinduet gemmes som samlet kobber for den relevante NPC.
+5. Data gemmes lokalt og vises, naar du holder musen over NPC'er eller items.
 
 ### Installation
 
@@ -32,7 +34,8 @@ Aktivér **Load out of date AddOns** i 3.3.5a-klienten, hvis det er nødvendigt.
 
 ### Kommandoer
 
-- `/mlt` aabner addonens oversigt.
+- `/mlt` åbner addonens oversigt.
+- `/mltdelete <NPC-ID> confirm` sletter alle gemte data for den NPC efter bekræftelse.
 
 Addonens statistik er personlig og baseret paa dine egne kills og drops, ikke paa en global drop database.
 
@@ -44,6 +47,7 @@ MobLootTracker is a lightweight World of Warcraft addon for **WoW 3.3.5a** and *
 
 - Tracks kill totals for each NPC
 - Separates regular loot, quest items, and skinning materials
+- Tracks total copper dropped by each NPC
 - Stores NPC names, zones, and personal drop data
 - Shows which NPCs can drop a selected item
 - Displays recorded drop totals and personal drop rates for each category
@@ -56,7 +60,8 @@ MobLootTracker is a lightweight World of Warcraft addon for **WoW 3.3.5a** and *
 1. NPC deaths are detected through the combat log.
 2. The NPC GUID is resolved to an NPC ID.
 3. Loot and skinning are recorded when the loot window opens.
-4. The data is stored locally and shown when hovering NPCs or items.
+4. Money from the loot window is stored as total copper for the NPC.
+5. The data is stored locally and shown when hovering NPCs or items.
 
 ### Installation
 
@@ -69,6 +74,7 @@ Enable **Load out of date AddOns** in the 3.3.5a client if required.
 ### Commands
 
 - `/mlt` opens the addon overview.
+- `/mltdelete <NPC ID> confirm` deletes all saved data for that NPC after confirmation.
 
 All statistics are personal and based on your own kills and drops rather than a global drop database.
 

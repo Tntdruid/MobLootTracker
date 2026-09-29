@@ -31,6 +31,9 @@ The addon is designed for AzerothCore/WotLK and uses the Ace3 library stack. The
 ## Event and data flow
 - NPC kills should be detected from the combat log and resolved via GUID to NPC ID.
 - Loot should be recorded when `LOOT_OPENED` fires and the most recent valid kill context is available.
+- In `LOOT_OPENED`, prefer the per-slot source GUID from `GetLootSourceInfo(slot)` to attribute loot to its corpse. If it is unavailable or cannot be resolved, fall back to the target GUID and then the most recent kill GUID.
+- If no NPC ID can be resolved for a loot slot, skip that slot without stopping the loop; one missing source must not prevent later loot slots from being recorded.
+- Record corpse currency from `GetLootMoney()` as cumulative copper in that NPC's `money` field. Money has no per-slot source GUID, so use a resolved item-slot source GUID when available, then the target/most-recent-kill fallback; do not record it without a resolved NPC ID.
 - Loot entries should separate leather/skinning items from normal item drops using the existing `LEATHER_ITEMS` logic.
 - Item tooltip output should be idempotent and avoid duplicate sections when tooltips are rebuilt.
 
