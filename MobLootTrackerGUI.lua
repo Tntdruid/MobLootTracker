@@ -148,18 +148,17 @@ function MobLootTracker:BuildSkinTab(container)
             header:SetText(string.format("%s (ID %d) – Skinning Loot", npcData.name or ("NPC "..npcID), npcID))
             scroll:AddChild(header)
 
+            local skins = MobLootTracker:GetSkinCount(npcData)
             for itemID, data in pairs(npcData.skinning) do
-                if MobLootTracker:IsSkinningItem(itemID) then
-                    local name   = GetItemInfo(itemID) or ("Item "..itemID)
-                    local rarity = select(3, GetItemInfo(itemID)) or 1
-                    local color  = select(4, GetItemQualityColor(rarity))
-                    local rate   = npcData.kills > 0 and (data.count / npcData.kills * 100) or 0
+                local name   = GetItemInfo(itemID) or ("Item "..itemID)
+                local rarity = select(3, GetItemInfo(itemID)) or 1
+                local color  = select(4, GetItemQualityColor(rarity))
+                local rate   = skins > 0 and (data.count / skins * 100) or 0
 
-                    local label = AceGUI:Create("Label")
-                    label:SetText(string.format("• %s%s|r x%d (%.1f%%)", color, name, data.count, rate))
-                    label:SetFullWidth(true)
-                    scroll:AddChild(label)
-                end
+                local label = AceGUI:Create("Label")
+                label:SetText(string.format("• %s%s|r x%d (%.1f%% of %d skins)", color, name, data.count, rate, skins))
+                label:SetFullWidth(true)
+                scroll:AddChild(label)
             end
         end
     end
@@ -192,11 +191,11 @@ local function GetNPCSummary(npcData)
         kills = kills,
         loot = lootCount,
         skinning = skinCount,
+        skins = skinCount > 0 and MobLootTracker:GetSkinCount(npcData) or 0,
         quest = questCount,
         totalDrops = totalDrops,
         money = npcData.money or 0,
         lootRate = kills > 0 and (lootCount / kills * 100) or 0,
-        skinRate = kills > 0 and (skinCount / kills * 100) or 0,
         questRate = kills > 0 and (questCount / kills * 100) or 0,
         totalRate = kills > 0 and (totalDrops / kills * 100) or 0,
     }
@@ -585,7 +584,7 @@ function MobLootTracker:BuildNPCTab(container)
 
             local label = AceGUI:Create("Label")
             label:SetText(string.format(
-                "|cffffd200%s|r (ID %d)  |  Kills: %d  |  Rate: %.1f%%\nLoot: %d (%.1f%%)  |  Skin: %d (%.1f%%)  |  Quest: %d (%.1f%%)\nMoney: %s  |  Top: %s x%d (%.1f%%)\nZone: %s",
+                "|cffffd200%s|r (ID %d)  |  Kills: %d  |  Rate: %.1f%%\nLoot: %d (%.1f%%)  |  Skin: %d (%d skins)  |  Quest: %d (%.1f%%)\nMoney: %s  |  Top: %s x%d (%.1f%%)\nZone: %s",
                 entry.name,
                 npcID,
                 summary.kills,
@@ -593,7 +592,7 @@ function MobLootTracker:BuildNPCTab(container)
                 summary.loot,
                 summary.lootRate,
                 summary.skinning,
-                summary.skinRate,
+                summary.skins,
                 summary.quest,
                 summary.questRate,
                 MobLootTracker:FormatMoney(summary.money),
@@ -635,10 +634,8 @@ function MobLootTracker:BuildStatsTab(container)
             totalItems = totalItems + (data.count or 0)
         end
 
-        for itemID, data in pairs(npcData.skinning or {}) do
-            if MobLootTracker:IsSkinningItem(itemID) then
-                totalSkin = totalSkin + (data.count or 0)
-            end
+        for _, data in pairs(npcData.skinning or {}) do
+            totalSkin = totalSkin + (data.count or 0)
         end
 
         for itemID, data in pairs(npcData.quest or {}) do

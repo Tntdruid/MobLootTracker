@@ -62,13 +62,49 @@ function MobLootTracker:IsGatherSpell(spellName)
 end
 
 function MobLootTracker:GetLootCategory(itemID, fromGathering)
-    if (fromGathering or self:IsSkinningItem(itemID)) and self:GetSetting("enableSkinning") then
+    -- Only loot from a gathering cast on a corpse is skinning loot. A leather that drops
+    -- as normal corpse loot stays a regular drop.
+    if fromGathering then
+        if not self:GetSetting("enableSkinning") then
+            return nil
+        end
         return "skinning"
     end
     if self:IsQuestItem(itemID) and self:GetSetting("enableQuestItems") then
         return "quest"
     end
     return "loot"
+end
+
+-- Skinning rates are per skin, not per kill: not every kill gets skinned.
+-- Falls back to kills for NPCs that have no recorded skins.
+function MobLootTracker:GetSkinCount(npcData)
+    local skins = npcData and tonumber(npcData.skins) or 0
+    if skins > 0 then
+        return skins
+    end
+    return npcData and tonumber(npcData.kills) or 0
+end
+
+-- Older data has skinning counts but no skin counter. Each skin normally yields one
+-- leather/hide, so the sum of the existing skinning counts (capped at kills) is the estimate.
+function MobLootTracker:MigrateSkinCounts(db)
+    local migrated = 0
+    for _, npcData in pairs(db or {}) do
+        if type(npcData) == "table" and npcData.skins == nil and npcData.skinning and next(npcData.skinning) then
+            local total = 0
+            for _, itemData in pairs(npcData.skinning) do
+                total = total + (tonumber(itemData.count) or 0)
+            end
+            local kills = tonumber(npcData.kills) or 0
+            if kills > 0 and total > kills then
+                total = kills
+            end
+            npcData.skins = total
+            migrated = migrated + 1
+        end
+    end
+    return migrated
 end
 
 function MobLootTracker:FormatMoney(copper)
@@ -240,7 +276,9 @@ function MobLootTracker:OnInitialize()
     self:RegisterChatCommand("mltfixloot", "RepairLootCommand")
     self:RegisterChatCommand("mltdelete", "DeleteNPCCommand")
 
-    self:RepairLootCategories()
+    -- RepairLootCategories is list-based, so it only runs on demand (/mltfixloot):
+    -- at login it would move genuine leather drops into skinning every time.
+    self:MigrateSkinCounts(SafeDB())
 
     self:Print("MobLootTracker loaded.")
 end
@@ -515,19 +553,31 @@ function MobLootTracker:LOOT_OPENED()
                 local generation = lootGenerationByGUID[guid] or 0
                 local key = guid .. ":" .. generation .. ":" .. (fromGathering and "gather:" or "") .. itemID
                 local duplicate = countedLoot[key] and not seenNow[key]
+                local category = self:GetLootCategory(itemID, fromGathering)
                 if debugMode then
-                    self:Print("Loot item " .. itemID .. ": " .. (duplicate and "duplicate skipped" or "recorded"))
+                    local outcome = (duplicate and "duplicate skipped")
+                        or (category and ("recorded as " .. category))
+                        or "ignored (skinning tracking disabled)"
+                    self:Print("Loot item " .. itemID .. ": " .. outcome)
                 end
-                if not duplicate then
+                if not duplicate and category then
                     seenNow[key] = true
 
-                    local category = self:GetLootCategory(itemID, fromGathering)
                     local bucket = (category == "skinning" and npcData.skinning)
                         or (category == "quest" and npcData.quest)
                         or npcData.items
 
                     bucket[itemID] = bucket[itemID] or { count = 0 }
                     bucket[itemID].count = bucket[itemID].count + 1
+
+                    if category == "skinning" then
+                        local skinKey = guid .. ":" .. generation .. ":skinned"
+                        if not countedLoot[skinKey] then
+                            countedLoot[skinKey] = now
+                            countedLootSize = countedLootSize + 1
+                            npcData.skins = (npcData.skins or 0) + 1
+                        end
+                    end
                 end
             end
         end

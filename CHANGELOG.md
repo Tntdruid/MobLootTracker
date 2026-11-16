@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 1.2 - 2026-11-16
+
+### Changed
+
+- Skinning drop rates are now based on how many times an NPC was skinned instead of how many times it was killed, because not every kill is skinned. Tooltips and the GUI show the number of skins.
+- The Skinning tab and Stats tab now include all skinning loot, not only known leathers and hides.
+- Only loot from a Skinning, Herb Gathering or Mining cast on a corpse counts as skinning loot and as a skin. Leather or hides that drop as normal corpse loot are now recorded as regular drops.
+- The list-based loot repair no longer runs automatically at login, so it cannot move genuine leather drops into skinning. It is still available with `/mltfixloot`.
+
+### Compatibility
+
+- Each NPC now saves a skin counter. For existing skinning data, the counter is estimated once from the saved skinning counts, capped at the kill count.
+
 ## 1.1 - 2026-11-16
 
 ### Fixed

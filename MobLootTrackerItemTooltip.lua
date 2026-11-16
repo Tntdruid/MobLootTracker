@@ -129,7 +129,7 @@ local function GetTrackedItemSources(itemID)
                 sources.skinning[#sources.skinning + 1] = {
                     name = npcData.name or ("NPC " .. npcID),
                     count = skinData.count or 0,
-                    kills = npcData.kills or 0,
+                    kills = MobLootTracker:GetSkinCount(npcData),
                     kind = "skinning",
                 }
             end
@@ -227,12 +227,13 @@ local function AddUnitLootToTooltip(tooltip, unit)
     end
 
     if next(npcData.skinning) then
-        tooltip:AddLine("Skinning:", 0.8, 0.6, 0.2)
+        local skins = MobLootTracker:GetSkinCount(npcData)
+        tooltip:AddLine(string.format("Skinning: %d skins", skins), 0.8, 0.6, 0.2)
         for itemID, data in pairs(npcData.skinning) do
             local itemName = GetItemInfo(itemID)
             local rarity = select(3, GetItemInfo(itemID)) or 1
             local color = select(4, GetItemQualityColor(rarity))
-            local rate = npcData.kills > 0 and (data.count / npcData.kills * 100) or 0
+            local rate = skins > 0 and (data.count / skins * 100) or 0
 
             tooltip:AddLine(string.format(
                 "  %s%s|r x%d (%.1f%%)",

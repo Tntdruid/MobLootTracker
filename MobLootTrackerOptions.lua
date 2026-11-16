@@ -87,7 +87,7 @@ local options = {
 
                 skinningInfo = {
                     type = "description",
-                    name = "Skinning droprate er baseret på total antal skinning-drops, ikke kills.",
+                    name = "Skinning-droprate er baseret på antal gange, mob'en er blevet flået (skins), ikke på kills.",
                 },
             },
         },
