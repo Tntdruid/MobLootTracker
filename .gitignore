@@ -1,7 +1,3 @@
-# VS Code / editor files
-.vscode/
-*.code-workspace
-
 # OS files
 Thumbs.db
 Desktop.ini

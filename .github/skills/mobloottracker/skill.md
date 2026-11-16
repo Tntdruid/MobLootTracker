@@ -1,6 +1,6 @@
 ---
 name: mobloottracker
-description: Use this skill when working on the MobLootTracker World of Warcraft addon. Covers addon architecture, Lua patterns, saved variables, tooltip behavior, combat log handling, and AzerothCore/WotLK compatibility.
+description: Use this skill when working on the MobLootTracker World of Warcraft addon, including changelog updates. Covers addon architecture, Lua patterns, saved variables, tooltip behavior, combat log handling, and AzerothCore/WotLK compatibility.
 ---
 
 # MobLootTracker skill
@@ -48,8 +48,17 @@ The addon is designed for AzerothCore/WotLK and uses the Ace3 library stack. The
 2. Confirm the relevant data flow from GUID -> NPC ID -> saved DB entry -> tooltip/rendering.
 3. Add or update a minimal repro or validation path before fixing logic.
 4. Implement the smallest possible root-cause fix.
-5. Keep output consistent with existing addon styling and user-facing command conventions.
-6. Verify the change with the most relevant local validation available in this repo.
+5. Update `CHANGELOG.md` in the same change when behavior, commands, saved data, compatibility, or user-visible output changes.
+6. Keep output consistent with existing addon styling and user-facing command conventions.
+7. Verify the change with the most relevant local validation available in this repo.
+
+## Changelog workflow
+- Keep all unreleased work under the existing `## Unreleased` heading in `CHANGELOG.md`.
+- Use the existing categories: `### Added`, `### Changed`, `### Fixed`, `### Removed`, and `### Compatibility`; add a category only when it is needed.
+- Write one concise, user-facing bullet for each meaningful change. Describe the result rather than implementation details.
+- Update the changelog before final validation so it reflects the code that was actually tested.
+- Do not add a changelog entry for comments, formatting-only edits, internal refactors with no behavior change, or test-only changes.
+- If a change affects saved variables or migration behavior, mention compatibility or migration impact explicitly.
 
 ## Output expectations
 When helping with this project, prefer:

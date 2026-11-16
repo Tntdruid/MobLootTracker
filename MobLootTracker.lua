@@ -14,7 +14,7 @@ local AceDB = LibStub("AceDB-3.0")
 ---------------------------------------------------------
 local SKINNING_ITEMS = {
     -- Classic / vanilla skinning materials
-    [2318]=true,[2319]=true,[2934]=true,[4231]=true,[4232]=true,[4233]=true,[4234]=true,[4235]=true,
+    [783]=true,[2318]=true,[2319]=true,[2934]=true,[4231]=true,[4232]=true,[4233]=true,[4234]=true,[4235]=true,
     [4304]=true,[4461]=true,[6470]=true,[6471]=true,[7286]=true,[7287]=true,[7392]=true,
     [8167]=true,[8169]=true,[8170]=true,[8171]=true,[8172]=true,
 
@@ -40,8 +40,29 @@ function MobLootTracker:IsQuestItem(itemID)
     return itemType == "Quest" or (ITEM_CLASS_QUEST and itemType == ITEM_CLASS_QUEST)
 end
 
-function MobLootTracker:GetLootCategory(itemID)
-    if self:IsSkinningItem(itemID) and self:GetSetting("enableSkinning") then
+-- Gathering spells that open a corpse loot window (Skinning, Herb Gathering, Mining).
+-- Everything looted right after one of these casts is profession loot, whatever the item is.
+local GATHER_SPELL_IDS = { 8613, 2366, 2575 }
+local gatherSpellNames = nil
+
+function MobLootTracker:IsGatherSpell(spellName)
+    if not spellName then
+        return false
+    end
+    if not gatherSpellNames then
+        gatherSpellNames = {}
+        for _, spellID in ipairs(GATHER_SPELL_IDS) do
+            local name = GetSpellInfo and GetSpellInfo(spellID)
+            if name then
+                gatherSpellNames[name] = true
+            end
+        end
+    end
+    return gatherSpellNames[spellName] == true
+end
+
+function MobLootTracker:GetLootCategory(itemID, fromGathering)
+    if (fromGathering or self:IsSkinningItem(itemID)) and self:GetSetting("enableSkinning") then
         return "skinning"
     end
     if self:IsQuestItem(itemID) and self:GetSetting("enableQuestItems") then
@@ -83,6 +104,7 @@ local defaults = {
         debugMode      = false,
         showNPCID      = false,
         showMobName    = true,
+        maxItemSources = 8,
         enableSkinning = true,
         enableQuestItems = true,
     },
@@ -209,7 +231,11 @@ function MobLootTracker:OnInitialize()
     self.db.profile = self.db.profile or {}
 
     self:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
+    self:RegisterEvent("UPDATE_MOUSEOVER_UNIT")
     self:RegisterEvent("LOOT_OPENED")
+    self:RegisterEvent("LOOT_CLOSED")
+    self:RegisterEvent("PLAYER_MONEY")
+    self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
     self:RegisterChatCommand("mlt", "ShowGUI")
     self:RegisterChatCommand("mltfixloot", "RepairLootCommand")
     self:RegisterChatCommand("mltdelete", "DeleteNPCCommand")
@@ -262,6 +288,33 @@ end
 local lastKillGUID = nil
 local lastKillTime = 0
 local processedDeaths = {}
+local lootGenerationByGUID = {}
+
+local function IsPlayerOrGroupMemberGUID(guid)
+    if not guid then
+        return false
+    end
+
+    if guid == UnitGUID("player") or guid == UnitGUID("pet") then
+        return true
+    end
+
+    local raidMemberCount = GetNumRaidMembers and GetNumRaidMembers() or 0
+    for i = 1, raidMemberCount do
+        if guid == UnitGUID("raid" .. i) or guid == UnitGUID("raid" .. i .. "pet") then
+            return true
+        end
+    end
+
+    local partyMemberCount = GetNumPartyMembers and GetNumPartyMembers() or 0
+    for i = 1, partyMemberCount do
+        if guid == UnitGUID("party" .. i) or guid == UnitGUID("party" .. i .. "pet") then
+            return true
+        end
+    end
+
+    return false
+end
 
 function MobLootTracker:COMBAT_LOG_EVENT_UNFILTERED(_, ...)
     local info
@@ -271,28 +324,22 @@ function MobLootTracker:COMBAT_LOG_EVENT_UNFILTERED(_, ...)
         info = { ... }
     end
 
-    if not info or #info < 2 then
+    local subEvent = info[2]
+    if not subEvent then
         return
     end
 
-    local subEvent = info[2]
-    local srcGUID, dstGUID
+    local srcGUID, dstGUID, dstName
     if _G.CombatLogGetCurrentEventInfo then
-        srcGUID = info[4]
-        dstGUID = info[8]
+        srcGUID, dstGUID, dstName = info[4], info[8], info[9]
     else
-        -- pre-Cataclysm signature has no hideCaster field, shifting indices back by one
-        srcGUID = info[3]
-        dstGUID = info[6]
+        -- 3.3.5a signature: timestamp, event, srcGUID, srcName, srcFlags, dstGUID, dstName, dstFlags
+        srcGUID, dstGUID, dstName = info[3], info[6], info[7]
     end
 
     if (subEvent == "UNIT_DIED" or subEvent == "PARTY_KILL" or subEvent == "SPELL_INSTAKILL") and dstGUID then
-        -- UNIT_DIED fires for every nearby death and has no reliable source.
-        -- Direct kill events already identify the player or pet as the source.
-        local playerGUID = UnitGUID("player")
-        local petGUID = UnitGUID("pet")
-        local isMine = srcGUID and (srcGUID == playerGUID or (petGUID and srcGUID == petGUID))
-        if subEvent == "UNIT_DIED" and not isMine then
+        -- UNIT_DIED has no source on 3.3.5a, so PARTY_KILL supplies the killer GUID.
+        if not IsPlayerOrGroupMemberGUID(srcGUID) then
             return
         end
 
@@ -311,6 +358,7 @@ function MobLootTracker:COMBAT_LOG_EVENT_UNFILTERED(_, ...)
         end
 
         processedDeaths[dstGUID] = now
+        lootGenerationByGUID[dstGUID] = (lootGenerationByGUID[dstGUID] or 0) + 1
         lastKillGUID = dstGUID
         lastKillTime = now
 
@@ -323,15 +371,23 @@ function MobLootTracker:COMBAT_LOG_EVENT_UNFILTERED(_, ...)
                 quest = {},
                 zones = {},
             }
-            db[npcID].name = db[npcID].name or (UnitName("target") or UnitName("mouseover") or ("NPC " .. npcID))
+            -- Name comes from the combat log (the actual victim), never from target/mouseover.
+            -- Overwriting also heals names that were saved wrongly by older versions.
+            if dstName and dstName ~= "" then
+                db[npcID].name = dstName
+            else
+                db[npcID].name = db[npcID].name or ("NPC " .. npcID)
+            end
             db[npcID].kills = (db[npcID].kills or 0) + 1
         end
-
     end
 end
 
 ---------------------------------------------------------
--- LOOT TRACKING (Leather → skinning, resten → items)
+-- LOOT TRACKING
+-- 3.3.5a has no GetLootSourceInfo / GetLootMoney, so the loot source
+-- is the dead mob under the mouse cursor. Nodes, chests, fishing and
+-- pickpocketing never match that, so they are ignored.
 ---------------------------------------------------------
 local function EnsureLootNPCData(db, npcID)
     db[npcID] = db[npcID] or {
@@ -352,76 +408,174 @@ local function EnsureLootNPCData(db, npcID)
     return npcData
 end
 
-local function GetRecentLootNPCID()
-    if not lastKillGUID or (GetTime() - lastKillTime) > 120 then
-        return nil
+local lastHoveredCorpseGUID = nil
+local lastHoveredCorpseTime = 0
+
+function MobLootTracker:UPDATE_MOUSEOVER_UNIT()
+    if not UnitExists("mouseover") or not UnitIsDead("mouseover") then
+        return
     end
 
-    local targetGUID = UnitGUID("target")
-    if targetGUID == lastKillGUID and UnitIsDead and UnitIsDead("target") then
-        return ResolveNPCIDFromGUID(targetGUID)
+    local guid = UnitGUID("mouseover")
+    if ResolveNPCIDFromGUID(guid) then
+        lastHoveredCorpseGUID = guid
+        lastHoveredCorpseTime = GetTime()
+    end
+end
+
+local function GetLootCorpse()
+    if UnitExists("mouseover") and UnitIsDead("mouseover") then
+        local guid = UnitGUID("mouseover")
+        local npcID = ResolveNPCIDFromGUID(guid)
+        if npcID then
+            return npcID, guid
+        end
     end
 
-    return ResolveNPCIDFromGUID(lastKillGUID)
+    if lastHoveredCorpseGUID and (GetTime() - lastHoveredCorpseTime) <= 5 then
+        local npcID = ResolveNPCIDFromGUID(lastHoveredCorpseGUID)
+        if npcID then
+            return npcID, lastHoveredCorpseGUID
+        end
+    end
+
+    return nil
+end
+
+-- corpseGUID:itemID -> time counted. Prevents double counting when a corpse is reopened.
+local countedLoot = {}
+local countedLootSize = 0
+local nextCountedLootPrune = 0
+local pendingMoney = nil
+local lastGatherCastTime = nil
+
+function MobLootTracker:UNIT_SPELLCAST_SUCCEEDED(_, unit, spellName)
+    if unit == "player" and self:IsGatherSpell(spellName) then
+        lastGatherCastTime = GetTime()
+    end
+end
+
+local function PruneCountedLoot()
+    local now = GetTime()
+    if countedLootSize < 500 and now < nextCountedLootPrune then
+        return
+    end
+    nextCountedLootPrune = now + 60
+    countedLootSize = 0
+    for key, t in pairs(countedLoot) do
+        if now - t > 600 then
+            countedLoot[key] = nil
+        else
+            countedLootSize = countedLootSize + 1
+        end
+    end
 end
 
 function MobLootTracker:LOOT_OPENED()
+    pendingMoney = nil
+
     local db = SafeDB()
     if not db then
         return
     end
 
-    local lootSourceNPCID = nil
-    local hasLootSourceInfo = false
-    local lootSlots = {}
-    for slot = 1, GetNumLootItems() do
-        local link = GetLootSlotLink(slot)
-        if link then
-            local itemID = tonumber(link:match("item:(%d+)"))
-            if itemID then
-                local sourceInfo = GetLootSourceInfo and { GetLootSourceInfo(slot) } or {}
-                hasLootSourceInfo = hasLootSourceInfo or #sourceInfo > 0
-                lootSlots[#lootSlots + 1] = { itemID = itemID, sourceInfo = sourceInfo }
-            end
-        end
+    if IsFishingLoot and IsFishingLoot() then
+        return
     end
 
-    local fallbackNPCID = not hasLootSourceInfo and GetRecentLootNPCID()
-    for _, lootSlot in ipairs(lootSlots) do
-        local itemID = lootSlot.itemID
-        local sourceInfo = lootSlot.sourceInfo
-        if fallbackNPCID then
-            sourceInfo = { fallbackNPCID, 1 }
+    local npcID, guid = GetLootCorpse()
+    if not npcID then
+        if self:GetSetting("debugMode") then
+            self:Print("Loot ignored: no dead mob under the mouse (node/chest/fishing?).")
         end
+        return
+    end
 
-        for sourceIndex = 1, #sourceInfo, 2 do
-            local npcID = ResolveNPCIDFromGUID(sourceInfo[sourceIndex])
-            local quantity = tonumber(sourceInfo[sourceIndex + 1]) or 1
-            if npcID and quantity > 0 then
-                lootSourceNPCID = lootSourceNPCID or npcID
-                local npcData = EnsureLootNPCData(db, npcID)
+    local npcData = EnsureLootNPCData(db, npcID)
+    local now = GetTime()
+    local fromGathering = lastGatherCastTime ~= nil and (now - lastGatherCastTime) <= 3
+    lastGatherCastTime = nil
+    local seenNow = {}
+    local hasCoin = false
+    local debugMode = self:GetSetting("debugMode")
 
-                local category = self:GetLootCategory(itemID)
-                if category == "skinning" then
-                    npcData.skinning[itemID] = npcData.skinning[itemID] or { count = 0 }
-                    npcData.skinning[itemID].count = npcData.skinning[itemID].count + quantity
-                elseif category == "quest" then
-                    npcData.quest[itemID] = npcData.quest[itemID] or { count = 0 }
-                    npcData.quest[itemID].count = npcData.quest[itemID].count + quantity
-                else
-                    npcData.items[itemID] = npcData.items[itemID] or { count = 0 }
-                    npcData.items[itemID].count = npcData.items[itemID].count + quantity
+    for slot = 1, GetNumLootItems() do
+        if LootSlotIsCoin and LootSlotIsCoin(slot) then
+            hasCoin = true
+            if debugMode then
+                self:Print("Loot slot " .. slot .. ": currency")
+            end
+        else
+            local link = GetLootSlotLink(slot)
+            local itemID = link and tonumber(link:match("item:(%d+)"))
+            if debugMode then
+                self:Print("Loot slot " .. slot .. ": " .. (itemID and ("item ID " .. itemID) or "item link unavailable or unparsed"))
+            end
+            if itemID then
+                local generation = lootGenerationByGUID[guid] or 0
+                local key = guid .. ":" .. generation .. ":" .. (fromGathering and "gather:" or "") .. itemID
+                local duplicate = countedLoot[key] and not seenNow[key]
+                if debugMode then
+                    self:Print("Loot item " .. itemID .. ": " .. (duplicate and "duplicate skipped" or "recorded"))
+                end
+                if not duplicate then
+                    seenNow[key] = true
+
+                    local category = self:GetLootCategory(itemID, fromGathering)
+                    local bucket = (category == "skinning" and npcData.skinning)
+                        or (category == "quest" and npcData.quest)
+                        or npcData.items
+
+                    bucket[itemID] = bucket[itemID] or { count = 0 }
+                    bucket[itemID].count = bucket[itemID].count + 1
                 end
             end
         end
     end
 
-    local money = GetLootMoney and GetLootMoney() or 0
-    if money > 0 then
-        local npcID = lootSourceNPCID or (not hasLootSourceInfo and fallbackNPCID)
-        if npcID then
-            local npcData = EnsureLootNPCData(db, npcID)
-            npcData.money = (npcData.money or 0) + money
+    for key in pairs(seenNow) do
+        if not countedLoot[key] then
+            countedLootSize = countedLootSize + 1
+        end
+        countedLoot[key] = now
+    end
+    PruneCountedLoot()
+
+    if hasCoin then
+        pendingMoney = { npcID = npcID, before = GetMoney(), open = true }
+    end
+
+    if self:GetSetting("debugMode") then
+        self:Print("Loot attributed to " .. tostring(npcData.name) .. " (ID " .. npcID .. ").")
+    end
+end
+
+function MobLootTracker:LOOT_CLOSED()
+    if pendingMoney then
+        pendingMoney.open = false
+        pendingMoney.closedAt = GetTime()
+    end
+end
+
+-- Money is picked up either while the loot window is open or right after it closes (autoloot).
+function MobLootTracker:PLAYER_MONEY()
+    local p = pendingMoney
+    if not p then
+        return
+    end
+
+    if not p.open and (GetTime() - (p.closedAt or 0)) > 2 then
+        pendingMoney = nil
+        return
+    end
+
+    local delta = GetMoney() - p.before
+    pendingMoney = nil
+
+    if delta > 0 then
+        local db = SafeDB()
+        if db and db[p.npcID] then
+            db[p.npcID].money = (db[p.npcID].money or 0) + delta
         end
     end
 end

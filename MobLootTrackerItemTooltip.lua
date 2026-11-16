@@ -15,7 +15,7 @@ local function ResolveNPCIDFromGUID(guid)
         return nil
     end
 
-    local entryHex = guid:match("^0xF1%x%x(%x%x%x%x%x%x)")
+    local entryHex = guid:match("^0xF130(%x%x%x%x%x%x)")
     return entryHex and tonumber(entryHex, 16) or nil
 end
 
@@ -43,6 +43,65 @@ local function TooltipHasMobLootLines(tooltip)
         end
     end
     return false
+end
+
+local DEFAULT_MAX_ITEM_SOURCES = 8
+local LOW_SAMPLE_KILLS = 5
+local CONFIDENCE_Z = 1.96
+
+-- Wilson lower bound: a rate from few kills ranks below an equal rate from many.
+local function GetSourceScore(source)
+    local kills = source.kills or 0
+    if kills <= 0 then
+        return 0
+    end
+
+    local rate = math.min((source.count or 0) / kills, 1)
+    local z2 = CONFIDENCE_Z * CONFIDENCE_Z
+    local margin = CONFIDENCE_Z * math.sqrt((rate * (1 - rate) + z2 / (4 * kills)) / kills)
+    return (rate + z2 / (2 * kills) - margin) / (1 + z2 / kills)
+end
+
+local function RankSources(list)
+    for _, source in ipairs(list) do
+        source.score = GetSourceScore(source)
+    end
+
+    table.sort(list, function(a, b)
+        if a.score ~= b.score then
+            return a.score > b.score
+        end
+        if a.count ~= b.count then
+            return a.count > b.count
+        end
+        return a.name < b.name
+    end)
+end
+
+local function AddSourceSection(tooltip, title, r, g, b, list, limit)
+    if not next(list) then
+        return
+    end
+
+    tooltip:AddLine(title, r, g, b)
+
+    local shown = limit and math.min(limit, #list) or #list
+    for i = 1, shown do
+        local source = list[i]
+        local detail
+        if source.kills > 0 then
+            detail = string.format("%.0f%% (%d/%d)", (source.count / source.kills) * 100, source.count, source.kills)
+        else
+            detail = "x" .. source.count
+        end
+
+        local shade = source.kills >= LOW_SAMPLE_KILLS and 1 or 0.6
+        tooltip:AddDoubleLine("  " .. source.name, detail, 1, 1, 1, shade, shade, shade)
+    end
+
+    if shown < #list then
+        tooltip:AddLine(string.format("  +%d more (hold Shift to show all)", #list - shown), 0.6, 0.6, 0.6)
+    end
 end
 
 local function GetTrackedItemSources(itemID)
@@ -87,17 +146,9 @@ local function GetTrackedItemSources(itemID)
         end
     end
 
-    table.sort(sources.drops, function(a, b)
-        return (a.count or 0) > (b.count or 0)
-    end)
-
-    table.sort(sources.skinning, function(a, b)
-        return (a.count or 0) > (b.count or 0)
-    end)
-
-    table.sort(sources.quest, function(a, b)
-        return (a.count or 0) > (b.count or 0)
-    end)
+    RankSources(sources.drops)
+    RankSources(sources.skinning)
+    RankSources(sources.quest)
 
     return sources
 end
@@ -108,7 +159,7 @@ local function AddUnitLootToTooltip(tooltip, unit)
     end
 
     local guid = UnitGUID(unit)
-    if not guid or not guid:match("^0xF1") then
+    if not guid or not guid:match("^0xF130") then
         return
     end
 
@@ -228,44 +279,14 @@ local function AddItemSourceToTooltip(tooltip, itemID)
 
     tooltip:AddLine("MobLootTracker sources", 0.8, 0.8, 0.2)
 
-    if next(dropSources) then
-        tooltip:AddLine("Drops from:", 0.8, 0.8, 0.2)
-        for _, source in ipairs(dropSources) do
-            local rate = source.kills > 0 and ((source.count / source.kills) * 100) or 0
-            tooltip:AddLine(string.format(
-                "  %s x%d (%.1f%%)",
-                source.name,
-                source.count,
-                rate
-            ), 1, 1, 1)
-        end
+    local limit
+    if not IsShiftKeyDown() then
+        limit = tonumber(MobLootTracker:GetSetting("maxItemSources")) or DEFAULT_MAX_ITEM_SOURCES
     end
 
-    if next(skinningSources) then
-        tooltip:AddLine("Skinning sources:", 0.8, 0.6, 0.2)
-        for _, source in ipairs(skinningSources) do
-            local rate = source.kills > 0 and ((source.count / source.kills) * 100) or 0
-            tooltip:AddLine(string.format(
-                "  %s x%d (%.1f%%)",
-                source.name,
-                source.count,
-                rate
-            ), 1, 1, 1)
-        end
-    end
-
-    if next(questSources) then
-        tooltip:AddLine("Quest item sources:", 0.5, 0.8, 1)
-        for _, source in ipairs(questSources) do
-            local rate = source.kills > 0 and ((source.count / source.kills) * 100) or 0
-            tooltip:AddLine(string.format(
-                "  %s x%d (%.1f%%)",
-                source.name,
-                source.count,
-                rate
-            ), 1, 1, 1)
-        end
-    end
+    AddSourceSection(tooltip, "Drops from:", 0.8, 0.8, 0.2, dropSources, limit)
+    AddSourceSection(tooltip, "Skinning sources:", 0.8, 0.6, 0.2, skinningSources, limit)
+    AddSourceSection(tooltip, "Quest item sources:", 0.5, 0.8, 1, questSources, limit)
 end
 
 local function GetItemIDFromTooltip(tooltip)
@@ -321,3 +342,21 @@ if GameTooltip and GameTooltip.HookScript then
         OnTooltipSetUnit(selfTooltip)
     end)
 end
+
+-- Rebuild the hovered item's tooltip so Shift expands and collapses it immediately.
+local modifierFrame = CreateFrame("Frame")
+modifierFrame:RegisterEvent("MODIFIER_STATE_CHANGED")
+modifierFrame:SetScript("OnEvent", function(_, _, key)
+    if key ~= "LSHIFT" and key ~= "RSHIFT" then
+        return
+    end
+    if not GameTooltip:IsVisible() or not GetItemIDFromTooltip(GameTooltip) then
+        return
+    end
+
+    local owner = GameTooltip:GetOwner()
+    local onEnter = owner and owner:GetScript("OnEnter")
+    if onEnter then
+        onEnter(owner, true)
+    end
+end)

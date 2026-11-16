@@ -50,6 +50,17 @@ local options = {
                     set = function(_, val) MobLootTracker:SetSetting("showDropRates", val) end,
                 },
 
+                maxItemSources = {
+                    type = "range",
+                    name = "Antal kilder i item-tooltip",
+                    desc = "Hvor mange af de bedste kilder der vises pr. kategori. Hold Shift for at se alle.",
+                    min = 1,
+                    max = 40,
+                    step = 1,
+                    get = function() return MobLootTracker:GetSetting("maxItemSources") end,
+                    set = function(_, val) MobLootTracker:SetSetting("maxItemSources", val) end,
+                },
+
                 debugMode = {
                     type = "toggle",
                     name = "Debug mode",

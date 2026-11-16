@@ -33,6 +33,10 @@ function MobLootTracker:ShowGUI()
     frame:SetHeight(550)
 
     self.GUI = { frame = frame }
+    frame:SetCallback("OnClose", function(widget)
+        AceGUI:Release(widget)
+        self.GUI = nil
+    end)
 
     local tabs = {
         { text="Loot",     value="loot" },
@@ -307,8 +311,27 @@ function MobLootTracker:BuildNPCEditor(container, npcID, npcData, onBack)
     backButton:SetCallback("OnClick", onBack)
     container:AddChild(backButton)
 
+    local deleteArmed = false
+    local deleteButton = AceGUI:Create("Button")
+    deleteButton:SetText("Slet NPC")
+    deleteButton:SetWidth(160)
+    deleteButton:SetCallback("OnClick", function()
+        if not deleteArmed then
+            deleteArmed = true
+            deleteButton:SetText("Klik igen for at slette")
+            return
+        end
+        local db = SafeDB()
+        db[npcID] = nil
+        db[tostring(npcID)] = nil
+        self:Print("Deleted saved data for " .. (npcData.name or "NPC") .. " (ID " .. npcID .. ").")
+        onBack()
+    end)
+    container:AddChild(deleteButton)
+
     local header = AceGUI:Create("Heading")
     header:SetText(string.format("Rediger: %s (ID %d)", npcData.name or ("NPC " .. npcID), npcID))
+    header:SetFullWidth(true)
     container:AddChild(header)
 
     local info = AceGUI:Create("Label")
@@ -341,6 +364,7 @@ function MobLootTracker:BuildNPCEditor(container, npcID, npcData, onBack)
         if next(entries) then
             local categoryHeader = AceGUI:Create("Heading")
             categoryHeader:SetText(category.label)
+            categoryHeader:SetFullWidth(true)
             editor:AddChild(categoryHeader)
 
             for _, entry in ipairs(GetSortedItemEntries(entries)) do
@@ -351,6 +375,7 @@ function MobLootTracker:BuildNPCEditor(container, npcID, npcData, onBack)
 
     local addHeader = AceGUI:Create("Heading")
     addHeader:SetText("Tilfoej drop")
+    addHeader:SetFullWidth(true)
     editor:AddChild(addHeader)
 
     local itemIDBox = AceGUI:Create("EditBox")
@@ -373,6 +398,7 @@ function MobLootTracker:BuildNPCEditor(container, npcID, npcData, onBack)
 
     local addButton = AceGUI:Create("Button")
     addButton:SetText("Tilfoej")
+    addButton:SetWidth(100)
     addButton:SetCallback("OnClick", function()
         local itemID = ParsePositiveInteger(itemIDBox:GetText())
         local count = ParsePositiveInteger(addCountBox:GetText())
@@ -391,21 +417,26 @@ function MobLootTracker:BuildNPCEditor(container, npcID, npcData, onBack)
     editor:AddChild(addButton)
 end
 
+-- Search, sort and filters survive opening the editor and switching tabs.
+function MobLootTracker:GetNPCBrowserState()
+    self.npcBrowserState = self.npcBrowserState or {
+        search = "",
+        sort = "rate",
+        filters = { loot = true, skinning = true, quest = true, empty = true },
+    }
+    return self.npcBrowserState
+end
+
 function MobLootTracker:BuildNPCTab(container)
     local db = SafeDB()
+    local state = self:GetNPCBrowserState()
+    local filters = state.filters
+    local RefreshNPCList
 
     local overviewHeader = AceGUI:Create("Heading")
     overviewHeader:SetText("NPC overview")
+    overviewHeader:SetFullWidth(true)
     container:AddChild(overviewHeader)
-
-    local overviewInfo = AceGUI:Create("Label")
-    overviewInfo:SetText("Sog NPC'er, filtrer efter type, og rediger drops direkte.")
-    overviewInfo:SetFullWidth(true)
-    container:AddChild(overviewInfo)
-
-    local searchText = ""
-    local sortMode = "rate"
-    local RefreshNPCList
 
     local toolbar = AceGUI:Create("SimpleGroup")
     toolbar:SetLayout("Flow")
@@ -415,8 +446,10 @@ function MobLootTracker:BuildNPCTab(container)
     local searchBox = AceGUI:Create("EditBox")
     searchBox:SetLabel("Sog navn eller ID")
     searchBox:SetWidth(220)
+    searchBox:DisableButton(true)
+    searchBox:SetText(state.search)
     searchBox:SetCallback("OnTextChanged", function(_, _, value)
-        searchText = string.lower(value or "")
+        state.search = string.lower(value or "")
         RefreshNPCList()
     end)
     toolbar:AddChild(searchBox)
@@ -429,97 +462,102 @@ function MobLootTracker:BuildNPCTab(container)
         name = "Navn",
         id = "NPC ID",
     })
-    sortDropdown:SetValue(sortMode)
+    sortDropdown:SetValue(state.sort)
     sortDropdown:SetWidth(150)
     sortDropdown:SetCallback("OnValueChanged", function(_, _, value)
-        sortMode = value or "rate"
+        state.sort = value or "rate"
         RefreshNPCList()
     end)
     toolbar:AddChild(sortDropdown)
 
-    local filters = {
-        loot = true,
-        skinning = true,
-        quest = true,
-    }
-
     local filterGroup = AceGUI:Create("SimpleGroup")
     filterGroup:SetLayout("Flow")
     filterGroup:SetFullWidth(true)
-    filterGroup:SetHeight(55)
     container:AddChild(filterGroup)
 
-    local filterLoot = AceGUI:Create("CheckBox")
-    filterLoot:SetLabel("Loot")
-    filterLoot:SetValue(true)
-    filterLoot:SetCallback("OnValueChanged", function(_, _, val)
-        filters.loot = val
-    end)
-    filterGroup:AddChild(filterLoot)
+    local function AddFilter(key, label)
+        local checkBox = AceGUI:Create("CheckBox")
+        checkBox:SetLabel(label)
+        checkBox:SetWidth(110)
+        checkBox:SetValue(filters[key])
+        checkBox:SetCallback("OnValueChanged", function(_, _, val)
+            filters[key] = val and true or false
+            RefreshNPCList()
+        end)
+        filterGroup:AddChild(checkBox)
+    end
+    AddFilter("loot", "Loot")
+    AddFilter("skinning", "Skinning")
+    AddFilter("quest", "Quest")
+    AddFilter("empty", "Uden drops")
 
-    local filterSkin = AceGUI:Create("CheckBox")
-    filterSkin:SetLabel("Skinning")
-    filterSkin:SetValue(true)
-    filterSkin:SetCallback("OnValueChanged", function(_, _, val)
-        filters.skinning = val
-    end)
-    filterGroup:AddChild(filterSkin)
-
-    local filterQuest = AceGUI:Create("CheckBox")
-    filterQuest:SetLabel("Quest")
-    filterQuest:SetValue(true)
-    filterQuest:SetCallback("OnValueChanged", function(_, _, val)
-        filters.quest = val
-    end)
-    filterGroup:AddChild(filterQuest)
+    local countLabel = AceGUI:Create("Label")
+    countLabel:SetFullWidth(true)
+    container:AddChild(countLabel)
 
     local scroll = AceGUI:Create("ScrollFrame")
-    scroll:SetLayout("Flow")
+    scroll:SetLayout("List")
     scroll:SetFullWidth(true)
     scroll:SetFullHeight(true)
     container:AddChild(scroll)
+
+    local function OpenEditor(npcID, npcData)
+        container:ReleaseChildren()
+        self:BuildNPCEditor(container, npcID, npcData, function()
+            container:ReleaseChildren()
+            self:BuildNPCTab(container)
+        end)
+    end
 
     RefreshNPCList = function()
         scroll:ReleaseChildren()
 
         local npcList = {}
+        local total = 0
         for npcID, npcData in pairs(db) do
-            local hasLoot = filters.loot and next(npcData.items or {}) ~= nil
-            local hasSkin = filters.skinning and next(npcData.skinning or {}) ~= nil
-            local hasQuest = filters.quest and next(npcData.quest or {}) ~= nil
-            local hasMoney = (npcData.money or 0) > 0
-            local npcName = npcData.name or ("NPC " .. tostring(npcID))
-            local searchableName = string.lower(npcName)
-            local searchableID = tostring(npcID)
-            local searchMatch = searchText == ""
-                or string.find(searchableName, searchText, 1, true)
-                or string.find(searchableID, searchText, 1, true)
+            if type(npcData) == "table" then
+                total = total + 1
+                local hasLoot = next(npcData.items or {}) ~= nil
+                local hasSkin = next(npcData.skinning or {}) ~= nil
+                local hasQuest = next(npcData.quest or {}) ~= nil
+                local visible = (filters.loot and hasLoot)
+                    or (filters.skinning and hasSkin)
+                    or (filters.quest and hasQuest)
+                    or (filters.empty and not hasLoot and not hasSkin and not hasQuest)
 
-            if (hasLoot or hasSkin or hasQuest or hasMoney) and searchMatch then
-                table.insert(npcList, { id = tonumber(npcID), data = npcData, name = npcName })
+                local npcName = npcData.name or ("NPC " .. tostring(npcID))
+                local search = state.search
+                local searchMatch = search == ""
+                    or string.find(string.lower(npcName), search, 1, true)
+                    or string.find(tostring(npcID), search, 1, true)
+
+                if visible and searchMatch then
+                    npcList[#npcList + 1] = {
+                        id = tonumber(npcID) or 0,
+                        data = npcData,
+                        name = npcName,
+                        summary = GetNPCSummary(npcData),
+                    }
+                end
             end
         end
 
+        local sortMode = state.sort
         table.sort(npcList, function(a, b)
-            local aSummary = GetNPCSummary(a.data)
-            local bSummary = GetNPCSummary(b.data)
             if sortMode == "name" then
-                local aName = string.lower(a.name)
-                local bName = string.lower(b.name)
+                local aName, bName = string.lower(a.name), string.lower(b.name)
                 if aName ~= bName then
                     return aName < bName
                 end
-            elseif sortMode == "id" then
-                if a.id ~= b.id then
-                    return a.id < b.id
-                end
-            elseif sortMode == "kills" and aSummary.kills ~= bSummary.kills then
-                return aSummary.kills > bSummary.kills
-            elseif sortMode == "rate" and aSummary.totalRate ~= bSummary.totalRate then
-                return aSummary.totalRate > bSummary.totalRate
+            elseif sortMode == "kills" and a.summary.kills ~= b.summary.kills then
+                return a.summary.kills > b.summary.kills
+            elseif sortMode == "rate" and a.summary.totalRate ~= b.summary.totalRate then
+                return a.summary.totalRate > b.summary.totalRate
             end
             return a.id < b.id
         end)
+
+        countLabel:SetText(string.format("Viser %d af %d NPC'er", #npcList, total))
 
         if #npcList == 0 then
             local emptyLabel = AceGUI:Create("Label")
@@ -531,14 +569,15 @@ function MobLootTracker:BuildNPCTab(container)
         for _, entry in ipairs(npcList) do
             local npcID = entry.id
             local npcData = entry.data
-            local summary = GetNPCSummary(npcData)
+            local summary = entry.summary
             local topItemName, topItemCount, topItemRate = GetTopDropItem(npcData)
 
-            local zones = ""
-            for z in pairs(npcData.zones or {}) do
-                zones = zones .. z .. ", "
+            local zoneList = {}
+            for zone in pairs(npcData.zones or {}) do
+                zoneList[#zoneList + 1] = zone
             end
-            zones = zones:gsub(", $", "")
+            table.sort(zoneList)
+            local zones = #zoneList > 0 and table.concat(zoneList, ", ") or "Unknown"
 
             local row = AceGUI:Create("SimpleGroup")
             row:SetLayout("Flow")
@@ -546,7 +585,7 @@ function MobLootTracker:BuildNPCTab(container)
 
             local label = AceGUI:Create("Label")
             label:SetText(string.format(
-                "|cffffd200%s|r (ID %d)  |  Kills: %d  |  Rate: %.1f%%\nLoot: %d (%.1f%%)  |  Skin: %d (%.1f%%)  |  Quest: %d (%.1f%%)\nMoney: %s  |  Top: %s x%d (%.1f%%)  |  Zone: %s",
+                "|cffffd200%s|r (ID %d)  |  Kills: %d  |  Rate: %.1f%%\nLoot: %d (%.1f%%)  |  Skin: %d (%.1f%%)  |  Quest: %d (%.1f%%)\nMoney: %s  |  Top: %s x%d (%.1f%%)\nZone: %s",
                 entry.name,
                 npcID,
                 summary.kills,
@@ -561,38 +600,22 @@ function MobLootTracker:BuildNPCTab(container)
                 topItemName,
                 topItemCount,
                 topItemRate,
-                zones ~= "" and zones or "Unknown"))
-            label:SetWidth(470)
+                zones))
+            label:SetRelativeWidth(0.78)
             row:AddChild(label)
 
             local editButton = AceGUI:Create("Button")
             editButton:SetText("Rediger")
-            editButton:SetWidth(130)
+            editButton:SetRelativeWidth(0.2)
             editButton:SetCallback("OnClick", function()
-                container:ReleaseChildren()
-                self:BuildNPCEditor(container, npcID, npcData, function()
-                    self:BuildNPCTab(container)
-                end)
+                OpenEditor(npcID, npcData)
             end)
             row:AddChild(editButton)
             scroll:AddChild(row)
         end
+
+        scroll:SetScroll(0)
     end
-
-    filterLoot:SetCallback("OnValueChanged", function(_, _, val)
-        filters.loot = val
-        RefreshNPCList()
-    end)
-
-    filterSkin:SetCallback("OnValueChanged", function(_, _, val)
-        filters.skinning = val
-        RefreshNPCList()
-    end)
-
-    filterQuest:SetCallback("OnValueChanged", function(_, _, val)
-        filters.quest = val
-        RefreshNPCList()
-    end)
 
     RefreshNPCList()
 end

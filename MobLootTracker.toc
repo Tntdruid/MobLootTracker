@@ -2,7 +2,7 @@
 ## Title: MobLootTracker
 ## Notes: Loot tracker with NPC tooltip, item colors, zones, GUI
 ## Author: Christian
-## Version: 1.0
+## Version: 1.1
 ## Dependencies: Ace3
 ## OptionalDeps: LibDataBroker-1.1, LibDBIcon-1.0
 ## SavedVariables: MobLootTrackerDB
